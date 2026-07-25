@@ -1,7 +1,13 @@
 # CLAUDE.md
 
-**Read [instructions.md](instructions.md) for full project detail and
-[handoff.md](handoff.md) for current progress before starting work.**
+**Before starting work, read `instructions.md` (full project detail, locked design
+decisions, constraints) and `handoff.md` (current progress and next steps) if they are
+present in the working directory.**
+
+Both are **git-ignored local working notes**, not repository files — they change constantly
+and are not worth a commit each. They will therefore be missing from a fresh clone. If they
+are absent, fall back to this file plus `docs/architecture.md`, and say so rather than
+guessing at project state.
 
 ## Project
 

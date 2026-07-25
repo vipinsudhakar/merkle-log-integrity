@@ -39,6 +39,13 @@ pnpm-debug.log*
 *.log
 logs/
 
+# ---------- Local working notes ----------
+# Kept out of version control deliberately: these are living scratch documents,
+# updated constantly as work progresses, and committing every revision would burn
+# through the commit budget. They are NOT disposable — see CLAUDE.md.
+instructions.md
+handoff.md
+
 # ---------- IDE / OS ----------
 .idea/
 *.iml
