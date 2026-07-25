@@ -154,6 +154,53 @@ public final class MerkleTree {
     }
 
     /**
+     * Generates an inclusion proof for the leaf at {@code leafIndex}.
+     *
+     * <h2>Why this is O(log n)</h2>
+     *
+     * <p>The loop runs once per level — {@code depth()} iterations, i.e. {@code ceil(log2 n)} —
+     * and every operation inside it is constant time:
+     *
+     * <ul>
+     *   <li>the sibling's position is {@code index ^ 1}: flipping the low bit turns an even
+     *       index into its right-hand partner and an odd index into its left-hand one;</li>
+     *   <li>the parent's position is {@code index >> 1};</li>
+     *   <li>reading a hash is an array index, not a search.</li>
+     * </ul>
+     *
+     * <p>There is no scan of the leaf list anywhere. That matters: an implementation that
+     * looked up siblings by searching would still return correct proofs while quietly costing
+     * O(n) per proof, which is exactly the cost this project exists to avoid.
+     *
+     * <p>When a level has an odd size, the last node has no sibling — it was promoted — so no
+     * step is emitted for that level, and the proof comes out shorter than the depth.
+     *
+     * @throws IndexOutOfBoundsException if the index is out of range, or the tree is empty
+     */
+    public MerkleProof generateProof(int leafIndex) {
+        requireLeafIndex(leafIndex);
+
+        List<ProofStep> steps = new ArrayList<>(depth());
+        int index = leafIndex;
+
+        for (int level = 0; level < levels.size() - 1; level++) {
+            int siblingIndex = index ^ 1;
+
+            if (siblingIndex < levelSize(level)) {
+                // A sibling exists. It is on the right when our own index is even.
+                ProofStep.Side side = (siblingIndex > index) ? ProofStep.Side.RIGHT : ProofStep.Side.LEFT;
+                steps.add(new ProofStep(hashAt(level, siblingIndex), side));
+            }
+            // else: this node was promoted to the level above unchanged, so there is nothing
+            // to combine with here and the proof simply has no step for this level.
+
+            index >>= 1; // ascend to the parent
+        }
+
+        return new MerkleProof(leafIndex, steps, leafCount());
+    }
+
+    /**
      * Read-only access to the level structure, bottom-up, for visualisation and tests.
      * Copies defensively — the internal arrays must stay immutable.
      */
