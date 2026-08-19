@@ -1,0 +1,172 @@
+==============================================================================
+  MERKLE-TREE TAMPER-EVIDENT LOG INTEGRITY  -  core engine demo
+  Phase 1 (core DSA) complete - console demo pending the React front end
+==============================================================================
+
+------------------------------------------------------------------------------
+  [1]  SYNTHETIC LOG STREAM
+------------------------------------------------------------------------------
+  entries generated : 512
+  rng seed          : 20260819  (fixed - every run is reproducible)
+  time span         : 2026-01-15T09:00:00.421Z  ->  2026-01-15T10:05:38.936Z
+
+  first three records:
+    #1    2026-01-15T09:00:00.421Z  WARN  sensor-hub-b     unexpected opcode, trace ZiP3lS3ue3VM17Of0Za6yxqD
+    #2    2026-01-15T09:00:01.245Z  WARN  sensor-hub-b     tls handshake failed, session FtC7w53GhSis8zUOhxeM9Vvu
+    #3    2026-01-15T09:00:01.721Z  INFO  edge-gateway-01  sensor read ok, value nominal
+
+------------------------------------------------------------------------------
+  [2]  HASH PRIMITIVES  (RFC 6962 domain separation)
+------------------------------------------------------------------------------
+  Real SHA-256 via java.security.MessageDigest - no stubs anywhere,
+  including in tests. Leaves and internal nodes are hashed under
+  DIFFERENT one-byte prefixes:
+
+    leafHash(d)     = SHA256(0x00 || d)       = 8f6c14aba1ffe9529503ccff561bd1ca8572fc8fd6b809de7bc75a65474f4f42
+    nodeHash(L,R)   = SHA256(0x01 || L || R)  = dabcab3a75b6b23f21c79b239ef44e04c2cc7dbdfdbe8939ec8b6219c85fe535
+    plain SHA256(d) = 489e66bbcb092987d58939928b65ad656287edcc25e2521a1084b789baa70b9e
+
+  WHY: without the prefixes an attacker could present an internal node's
+  data as if it were a leaf - the second-preimage attack RFC 6962 closes.
+  Empty-tree sentinel root = SHA256("") = e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+
+------------------------------------------------------------------------------
+  [3]  FOREST CONSTRUCTION  (chunk = one independent Merkle tree)
+------------------------------------------------------------------------------
+  strategy    : fixed-size {chunkSize=64}
+  entries     : 512
+  chunks      : 8  (each its own tree, roots sealed under a super-root)
+  super-tree  : 8 chunk roots, depth 3
+  SUPER-ROOT  : a3072b86b86daf0290dc335f383ede06feb62094da031b466cbaa6be3986bf80
+
+  chunk   entries  tree depth   chunk root
+  -----   -------  ----------   ----------
+  0       64       6            a0401c92f4b806dd...
+  1       64       6            852e6b2c2d6af71f...
+  2       64       6            9760815ab54c2bd2...
+  3       64       6            3e6ba78b0029e394...
+  4       64       6            52b335dec02b6135...
+  5       64       6            4c55cb75b755197c...
+  ...2 more chunks
+
+------------------------------------------------------------------------------
+  [4]  INCLUSION PROOF  -  O(log n), not O(n)
+------------------------------------------------------------------------------
+  proving entry #171 : "sensor read ok, value nominal"
+  located in       : chunk 2, local index 42
+
+  entry -> chunk root : 6 steps
+  chunk root -> super : 3 steps
+  TOTAL               : 9 sibling hashes = 288 bytes on the wire
+  a naive re-hash of the whole dataset would touch 512 entries
+
+  verification trace (entry -> chunk root), one SHA-256 per line:
+    start  running = leaf  14a1b070dde1684a...
+    s1     sibling on right 0a220d9e2a2d219a...  ->  ec2f33408eef27b8...
+    s2     sibling on left  781c69fc606b0e86...  ->  5c9ccd56b15a6a1a...
+    s3     sibling on right 066f534076185657...  ->  b381ba8be3728a85...
+    s4     sibling on left  710ba1923ee4f2a2...  ->  a28b796e56011b67...
+    s5     sibling on right c4504bb8ab286a7b...  ->  301e3179d02b8ad2...
+    s6     sibling on left  519c9a4586baa709...  ->  9760815ab54c2bd2...
+    result computed = 9760815ab54c2bd28436f33af5082a5255204603778315a975eeeeac588c743c
+           expected = 9760815ab54c2bd28436f33af5082a5255204603778315a975eeeeac588c743c
+
+  VERDICT: VALID  (recomputed super-root matches the trusted one)
+
+------------------------------------------------------------------------------
+  [5]  TAMPER DETECTION AND LOCALISATION
+------------------------------------------------------------------------------
+  entry #171 edited
+    before : "sensor read ok, value nominal"
+    after  : "heartbeat ok"
+
+  a single changed byte propagates all the way to the super-root:
+    super-root before : a3072b86b86daf0290dc335f383ede06feb62094da031b466cbaa6be3986bf80
+    super-root after  : faf6541f64ac7de30dd96959993cce4c46a562f3bea045f586673573edcdd449
+    identical?        : NO - tampering detected
+
+  what the old proof does and does not still prove:
+    original entry + old proof vs OLD (trusted) root : VALID
+    original entry + old proof vs NEW root           : INVALID
+    forged   entry + old proof vs OLD (trusted) root : INVALID
+    forged   entry + old proof vs NEW root           : VALID
+
+    Read the last line carefully - it is the honest limit of the scheme,
+    and the thing worth being able to explain. An attacker who rewrites an
+    entry AND recomputes the tree gets a set that is internally consistent:
+    the forged entry verifies against the forged root. What they cannot do
+    is make it verify against the TRUSTED root (line 3: INVALID). That is
+    why the super-root has to be anchored outside the log - published,
+    signed, or held by the verifier - not just stored beside the data.
+
+  LOCALISATION - narrowing to the culprit without scanning entries:
+    step 1: compare 8 chunk roots      -> chunk 2 differs
+    step 2: descend that chunk's tree  -> local leaf 42
+    step 3: global entry index         -> 170  (entry #171)
+    comparisons used: 14, against 512 entries in the dataset
+
+------------------------------------------------------------------------------
+  [6]  LOCALISED REBUILD COST
+------------------------------------------------------------------------------
+  When an entry changes, only its own chunk's tree is rebuilt, plus the
+  small super-tree over the chunk roots. Every other chunk is untouched.
+
+    chunk rebuilt              : 2
+    entries re-hashed          : 64
+    entries in the dataset     : 512
+    saving vs one global tree  : 8.0x cheaper
+
+  This is exactly why chunking strategy matters, and what Phase 7 measures:
+  smaller chunks rebuild faster but make proofs longer, and vice versa.
+
+------------------------------------------------------------------------------
+  [7]  CHUNKING STRATEGY COMPARISON  (the contribution over the base paper)
+------------------------------------------------------------------------------
+  strategy     chunks   avg size   avg steps   proof bytes   rebuild cost
+  --------     ------   --------   ---------   -----------   ------------
+  fixed-size   8        64.0       9.00        288           64.0 entries
+  time-window  45       11.4       10.04       321           23.2 entries
+  entropy      28       18.3       9.39        301           18.9 entries
+
+  Reading it: fewer, larger chunks -> shorter super-tree path but a taller
+  chunk tree and a costlier rebuild. The three strategies land at different
+  points on that trade-off, which is what the base paper's single strategy
+  could not show. Base-paper reference proof size: ~1006 bytes.
+
+  KNOWN LIMITATION (stated, not hidden): Shannon entropy over a short byte
+  window is biased low and noisy, so on short log payloads the entropy
+  boundary signal degrades toward arbitrary. Guarded with min/max chunk
+  size so a low-entropy run cannot collapse into one giant chunk.
+
+------------------------------------------------------------------------------
+  [8]  DEGENERATE CASES  (defined behaviour, not accidents)
+------------------------------------------------------------------------------
+  0 entries:
+    isEmpty       : true
+    super-root    : e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+    == SHA256("") : true  (RFC 6962 sentinel - never null)
+    proof request : throws EmptyForestException
+
+  1 entry (also the 1-chunk case):
+    root == leafHash(entry)  : true
+    proof steps              : 0  (an empty step list)
+    verifies vs CORRECT root : VALID
+    verifies vs WRONG   root : INVALID
+    (an empty proof must NOT short-circuit to true - that hole would
+     pass a naive test while accepting any root at all)
+
+  odd node at a level: promoted unchanged, never duplicated -
+  duplication is the Bitcoin CVE-2012-2459 forgery.
+
+==============================================================================
+  STATUS
+==============================================================================
+  DONE      Phase 1 - core DSA: hashing, tree, proofs, verifier, forest,
+                      3 chunking strategies.  260 unit tests, all green.
+  NEXT      Phase 2 - REST API   |  Phase 3 - PostgreSQL persistence
+  PENDING   Phases 4-6 - React visualisation, tamper UI, comparison page
+            Phase 7 - benchmark dashboard  |  Phase 8 - deployment
+
+  This console demo stands in for the front end until Phase 4. Every figure
+  above came from the real engine - no fixtures, no mocked hashes.
+==============================================================================

@@ -27,9 +27,34 @@ latency, and tree rebuild cost.
 - **Database:** PostgreSQL
 - **Deployment:** Render
 
+## Running the console demo
+
+The core integrity engine is complete and can be demonstrated from the command
+line while the React front end is still being built:
+
+```bash
+cd backend
+mvn test                                            # 260 unit tests
+mvn -q compile
+java -cp target/classes com.merklelog.demo.DemoRunner       # 512 entries
+java -cp target/classes com.merklelog.demo.DemoRunner 2048  # any size
+```
+
+It walks through hash primitives, forest construction, an inclusion proof with
+its full verification trace, tamper detection and O(log n) localization,
+rebuild cost, and a side-by-side comparison of the three chunking strategies.
+The synthetic log stream uses a fixed RNG seed, so every run prints identical
+hashes. A captured run is committed at [`docs/demo-output.txt`](docs/demo-output.txt).
+
 ## Status
 
-🚧 In development — zeroth review stage.
+🚧 In development.
+
+- ✅ **Phase 1** — core DSA: hashing, Merkle tree, inclusion proofs, verifier,
+  forest model, three chunking strategies. 260 unit tests, all passing.
+- ⏳ **Phase 2–3** — REST API, PostgreSQL persistence.
+- ⏳ **Phase 4–8** — React visualization, tamper simulation UI, strategy
+  comparison page, benchmark dashboard, deployment.
 
 ## Team
 
