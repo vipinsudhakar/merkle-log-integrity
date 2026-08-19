@@ -46,6 +46,10 @@ logs/
 instructions.md
 handoff.md
 
+# ---------- Claude Code local settings ----------
+# Personal per-machine overrides (attribution, permissions). Not team config.
+.claude/settings.local.json
+
 # ---------- IDE / OS ----------
 .idea/
 *.iml
