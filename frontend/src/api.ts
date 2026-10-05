@@ -106,6 +106,83 @@ export interface TamperResult {
   outcomes: TamperOutcome[]
 }
 
+export interface AnchorView {
+  id: number
+  datasetId: number
+  strategy: string
+  parameters: string
+  entryCount: number
+  chunkCount: number
+  superRoot: string
+  anchoredAt: string
+}
+
+export interface AnchorCheck {
+  anchor: AnchorView
+  recomputedRoot: string
+  entryCount: number
+  matches: boolean
+}
+
+// ------------------------------------------------------------------ benchmark results
+
+export interface MeanSd {
+  mean: number
+  sd: number
+  min?: number
+  max?: number
+}
+
+export interface BenchmarkRow {
+  subject: string
+  size: number
+  chunkCount: number
+  chunkSize: MeanSd
+  proofSteps: MeanSd
+  proofBytesMean: number
+  ingestHashOps: number
+  ingestMs: MeanSd
+  ingestLogsPerSec: MeanSd
+  proofGenMicros: MeanSd
+  verifyMicros: MeanSd
+  editHashOps: MeanSd
+  editMicros: MeanSd
+  insertChunkRootsChanged: MeanSd | null
+  insertHashOps: MeanSd
+  heapMb: MeanSd
+}
+
+export interface TamperRow {
+  subject: string
+  ratio: number
+  tampered: number
+  detected: number
+  precision: number
+  recall: number
+  f1: number
+  ms: number
+}
+
+export interface PressureRow {
+  subject: string
+  window: number
+  pressure: number
+  chunks: number
+  avgChunkSize: number
+}
+
+export interface BenchmarkResults {
+  generatedAt: string
+  java: string
+  seed: number
+  runs: number
+  sizes: number[]
+  notes: string[]
+  results: BenchmarkRow[]
+  tamper: TamperRow[]
+  pressure: PressureRow[]
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(BASE + path, {
     ...init,
@@ -143,4 +220,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ operation, position, message, parameters }),
     }),
+  anchor: (id: number, strategy: string) =>
+    request<AnchorView>(`/datasets/${id}/anchors${query(strategy)}`, { method: 'POST' }),
+  verifyAnchor: (id: number, strategy: string) => request<AnchorCheck>(`/datasets/${id}/anchors/verify${query(strategy)}`),
+  /** Rewrites a stored entry in the database: the attacker. */
+  overwrite: (id: number, position: number, message: string) =>
+    request<EntryView>(`/datasets/${id}/entries/${position}`, { method: 'PUT', body: JSON.stringify({ message }) }),
+  benchmarks: () => request<BenchmarkResults>('/benchmarks'),
 }

@@ -38,3 +38,11 @@ export const PRESSURE_PROFILES: Record<string, { label: string; value: string }>
 export function fmt(n: number): string {
   return n.toLocaleString('en-US')
 }
+
+/**
+ * One decimal place, rounded half away from zero on the decimal value. toFixed(1) works on the
+ * binary value, so 1.15 (stored as 1.1499…) would print as 1.1 while the docs say 1.2.
+ */
+export function oneDecimal(n: number): string {
+  return (Math.round(n * 10 + Number.EPSILON * 10) / 10).toFixed(1)
+}

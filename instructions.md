@@ -20,13 +20,14 @@ one chunk plus a small super-tree.
 
 Deliverables for the end review:
 
-1. CAAC implemented in the Java engine, with tests.
-2. The paper's method implemented **faithfully** as the baseline, alongside the three classic
-   strategies (fixed-size, time-window, entropy).
-3. A benchmark comparing all five, at the paper's dataset sizes.
-4. A visualiser (React + Spring API) showing how each strategy chunks, the trees and proofs,
-   tampering/insertion, and the results graphs.
-5. Deployed on Render, plus an end-review PPT built from the real results.
+1. ✅ CAAC implemented in the Java engine, with tests.
+2. ✅ The paper's method implemented **faithfully** as the baseline (`resource-aware` +
+   `PaperPipeline`), alongside the three classic strategies (fixed-size, time-window, entropy).
+3. ✅ A benchmark comparing all five plus the paper's pipeline, at the paper's dataset sizes
+   (`docs/benchmarks/`).
+4. ✅ A visualiser (React + Spring API): chunking, tree & proof, tamper & insert with the
+   trusted-anchor demo, results.
+5. ⏳ Deployed on Render, plus an end-review PPT built from the real results (day 5).
 
 ### One-line pitch (for slides and the viva)
 
@@ -124,7 +125,7 @@ Properties to prove by tests and benchmarks:
 **How to frame the claim (from the full benchmark, 2026-10-05; `docs/benchmarks/`).** At 100k
 entries, rebuilding after one **insertion** costs: CAAC 1,603 hashes; fixed-size 100,839 and
 the paper's sizing in a forest 100,783 (an insertion shifts every later boundary); the paper's
-global-tree pipeline 100,001; time-window 7,931 and entropy 5,196 (local, but 4–6× more and
+global-tree pipeline 100,001; time-window 7,931 and entropy 5,196 (local, but 3.7–5.6× more and
 smaller chunks, so a bigger super-tree). After one **edit**, every forest with similar chunk
 sizes costs about the same (CAAC 1,491, fixed-size 1,624), against 100,000 for the paper's
 pipeline. Do **not** claim CAAC makes edits cheaper than fixed-size, or that it is the only
@@ -169,62 +170,84 @@ limitation visible.
 
 ---
 
-## 5. Architecture
+## 5. Architecture (as built)
 
 ```
 backend/src/main/java/com/merklelog/
-  core/         Hashing, LogEntry, MerkleTree, proofs, verifier, MerkleForest (+ PaperPipeline)
-  chunking/     ChunkingStrategy + fixed-size, time-window, entropy, resource-aware, caac + factory
-  benchmark/    BenchmarkRunner (writes docs/benchmarks/*.json), metric helpers
+  core/         Hashing (counted), LogEntry, MerkleTree, proofs, verifier, MerkleForest, PaperPipeline
+  chunking/     ChunkingStrategy + fixed-size, time-window, entropy, resource-aware, caac;
+                ResourceAwareSizer (Eq. 1–2), MemoryPressureProfile, factory
+  benchmark/    BenchmarkRunner, Subject, Stats, Json → docs/benchmarks/results.{json,csv}
   demo/         SyntheticLogGenerator, DemoRunner (console demo)
-  api/          Spring controllers + DTOs + services
-  persistence/  JPA entities, repositories, seeding
-frontend/src/   React (Vite, TypeScript, Tailwind, Recharts): pages, components, api client
-docs/           architecture.md, demo-output.txt, benchmarks/
+  api/          ForestService (the only door into the engine), controllers, Dto, error handler, CORS
+  persistence/  JPA entities, repositories, DatasetService (batched inserts, cache), DemoDataSeeder
+frontend/src/   React 19 + TypeScript (Vite), Tailwind 4, Recharts
+  ui/           design-system primitives (frontend/DESIGN.md)
+  components/   ChunkingStrip, TreeProof, Tamper, Results
+docs/           architecture.md, benchmarks/, images/ (README screenshots), demo-output.txt
 ```
 
 - `core/`, `chunking/`, `benchmark/` stay **Spring-free** (plain JUnit-testable).
-- **Spring Boot**: upgrade 3.3.5 → latest 3.x (needed for a Flyway that knows PostgreSQL 18).
+- **Spring Boot 3.5.16**, Flyway pinned to 11.20.3 (PostgreSQL 18 support).
 
-### 5.1 REST API (planned)
+### 5.1 REST API
+
+All under `/api`. Strategy-dependent endpoints take `?strategy=<name>` plus optional strategy
+parameters (unknown keys ignored, malformed values → 400).
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/strategies` | names, default parameters, descriptions |
-| POST | `/api/datasets` | generate a dataset (seed, n) and store it |
-| POST | `/api/admin/seed` | rebuild demo data from an empty database |
-| GET | `/api/datasets/{id}/chunks?strategy=&…params` | boundaries, sizes, chunk roots, super-root |
-| GET | `/api/datasets/{id}/chunks/{c}/tree?strategy=` | node tree for drawing (`MerkleTree.toNodeTree`) |
-| GET | `/api/datasets/{id}/proof/{i}?strategy=` | two-stage proof + step trace (`MerkleVerifier.verifyWithTrace`) |
-| POST | `/api/datasets/{id}/tamper` | edit or insert an entry → per-strategy diff (changed hashes, chunks, rebuild ops) |
-| GET/POST | `/api/anchors` | trusted root anchor history |
-| GET | `/api/benchmarks` | benchmark results (from the committed fixture under the `render` profile) |
+| GET | `/strategies` | names, descriptions, default parameters |
+| GET / POST | `/datasets` | list; generate (name, size ≤ 100k, seed) and store |
+| GET | `/datasets/{id}` | one dataset |
+| GET | `/datasets/{id}/entries?offset=&limit=` | page of entries with leaf hashes (limit ≤ 500) |
+| PUT | `/datasets/{id}/entries/{pos}` | rewrite a stored entry's message (the attacker, for the anchor demo) |
+| GET | `/datasets/{id}/chunks` | boundaries, sizes, depths, chunk roots, super-root |
+| GET | `/datasets/{id}/chunks/{c}/tree` | one chunk's tree as levels of hex hashes (≤ 4,096 leaves) |
+| GET | `/datasets/{id}/supertree` | the super-tree as levels |
+| GET | `/datasets/{id}/proof/{i}` | two-stage proof with `verifyWithTrace` steps for both stages |
+| POST | `/datasets/{id}/tamper` | `{operation: edit\|insert, position, message, parameters}` → per-subject changed chunks, counted rebuild cost, roots before/after |
+| POST | `/datasets/{id}/anchors` | anchor the current super-root under a strategy |
+| GET | `/datasets/{id}/anchors` | anchor history |
+| GET | `/datasets/{id}/anchors/verify` | recompute and compare with the latest anchor for that strategy |
+| GET | `/benchmarks` | `docs/benchmarks/results.json`, copied onto the classpath at build |
+| POST | `/admin/seed` | delete everything, recreate demo-512 / demo-2k / demo-10k |
 
-### 5.2 PostgreSQL 18 (Flyway migrations)
+Errors are RFC 9457 problem details: unknown dataset/anchor → 404; bad strategy, parameter or
+index → 400.
 
-- `datasets` — id, seed, size, created_at
-- `log_entries` — dataset_id, position, entry id, timestamp, level, source, message
-- `root_anchors` — dataset_id, strategy, entry_count, super_root (hex), created_at — the
-  paper's "trusted anchor" (§3.1) made real; lets the demo detect a rewritten history.
+### 5.2 PostgreSQL 18 (Flyway V1)
 
-Render's free Postgres expires every 30 days: `POST /api/admin/seed` must rebuild everything
-from an empty database. Never rely on existing state.
+- `datasets` — id, name, seed, size, created_at
+- `log_entries` — (dataset_id, position) primary key; entry_id, logged_at, level, source, message
+- `root_anchors` — dataset_id, strategy, parameters, entry_count, chunk_count, super_root
+  (CHAR(64) hex), anchored_at — the paper's "trusted anchor" (§3.1) made real.
 
-### 5.3 Visualiser views
+Render's free Postgres expires every 30 days: the demo data is seeded on startup when the
+database is empty (`app.seed-on-startup`), and `POST /api/admin/seed` rebuilds it on demand.
 
-1. **Chunking strip** — the log as a strip of entries with each strategy's cut points; switch
-   strategy, drag parameters and the pressure profile.
-2. **Tree + proof** — click a chunk to draw its tree; click an entry to step its proof up to
-   the super-root.
-3. **Tamper / insert** — edit or insert an entry; side by side, which hashes and chunks change
-   per strategy and how many hash operations the rebuild cost.
-4. **Results dashboard** — the graphs from §4, plus the anchor history panel.
+### 5.3 Visualiser views (as built)
 
-### 5.4 Deployment (Render)
+1. **§1 Chunking** (`#chunking`) — the same log cut by all five strategies, to scale, over a
+   movable window; fixed chunk size and memory-pressure profile adjustable; click a chunk to
+   prove one of its entries.
+2. **§2 Tree & proof** (`#proof`) — the entry's path drawn on its chunk tree and the
+   super-tree, climbing one level per step beside the verification trace; verdict stamped.
+3. **§3 Tamper & insert** (`#tamper`) — one edit or insertion across all six subjects
+   (changed chunks, counted rebuild cost, detection); **§3.1** anchor → rewrite in PostgreSQL
+   → verify fails → undo.
+4. **§4 Results** (`#results`) — headline figures, Figs. 5–9, Tables 1–2, caveats; legend hover
+   follows one strategy through every figure.
 
-Backend as a Docker web service, frontend as a static site, Render Postgres. Benchmarks on
-Render are served from the committed fixture (`render` profile) — free-tier timings would be
-misleading. Live benchmark runs are local-dev only.
+Design system: `frontend/DESIGN.md` ("The Ledger"). New views must use `src/ui/` primitives and
+the tokens in `src/index.css`.
+
+### 5.4 Deployment (Render) — day 5
+
+Backend as a Docker web service, frontend as a static site (`VITE_API_BASE`), Render Postgres.
+Environment: `DATABASE_URL` (JDBC form), `DATABASE_USERNAME`, `DATABASE_PASSWORD`,
+`APP_CORS_ALLOWED_ORIGINS`, `PORT`. Benchmarks are always served from the committed results —
+free-tier timings would be misleading. Live benchmark runs are local only.
 
 ---
 
@@ -248,7 +271,7 @@ misleading. Live benchmark runs are local-dev only.
 | 1 — engine ✅ (2026-10-05) | Fix `MerkleForest.withEntryReplaced` (rebuilt every chunk) to reuse untouched trees; add hash-operation counting in `Hashing` and assert counted work in tests; implement `ResourceAwareChunking`, `PaperPipeline`, `ContentAnchoredChunking`; register in the factory; tests incl. insertion locality |
 | 2 — benchmarks + backend ✅ (2026-10-05) | `BenchmarkRunner` → `docs/benchmarks/*.json`; Spring Boot upgrade; web/JPA/Flyway/Postgres deps; Flyway V1; local DB + user `merklelog` |
 | 3 — API + frontend ✅ (2026-10-05) | REST endpoints (§5.1); scaffold `frontend/`; chunking strip + tree/proof views |
-| 4 — frontend | Tamper/insert view, results dashboard, anchor history |
+| 4 — frontend ✅ (2026-10-05) | Tamper/insert view, results dashboard, anchor history |
 | 5 — ship | Render deployment; final README/architecture; end-review PPT from the real graphs; demo rehearsal |
 
 Git rules for this push: at most **6 commits per day**, each a **large bundled commit** of

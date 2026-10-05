@@ -3,7 +3,7 @@
 How the core works and why it is built this way. Written to be read aloud in a viva —
 every design choice below has a reason attached.
 
-Status: core engine complete, including CAAC and the base-paper baseline. The objective changed in October 2026 to
+Status: engine, benchmark, API, persistence and visualiser complete; deployment pending. The objective changed in October 2026 to
 **Content-Anchored Adaptive Chunking (CAAC)**; see §12 and `instructions.md`. The API,
 persistence and UI are built on top of this core without changing its guarantees.
 
@@ -306,7 +306,7 @@ moves only nearby boundaries, and with one tree per chunk the rebuild stays O(c 
 Full benchmark (docs/benchmarks/, 100,000 entries): rebuilding after one **insertion** costs CAAC
 1,603 hashes (1.2 chunk roots change), against ~100,800 for fixed-size and the paper's sizing
 (every later boundary shifts) and 100,001 for the paper's global tree; time-window and entropy
-are also local but cost 7,931 and 5,196 because their chunks are 4–6× smaller. An **edit** costs
+are also local but cost 7,931 and 5,196 because they cut 3.7–5.6× more, smaller chunks. An **edit** costs
 about the same in every forest with similar chunk sizes (~1,500) and 100,000 in the paper's
 pipeline. `MerkleForest.build` hashes each entry once and hands the leaf hashes to the strategy,
 so CAAC does not hash twice.
@@ -335,3 +335,22 @@ visualiser shows exactly what the tested engine computes.
 - **Tests**: `ApiTest` runs the controllers with the database mocked and the engine real
   (`@WebMvcTest`), so `mvn test` needs no PostgreSQL. The database path is verified by running
   the application against PostgreSQL 18.
+
+---
+
+## 14. Visualiser
+
+`frontend/` (React 19 + TypeScript, Vite, Tailwind 4, Recharts) only displays what the API
+returns; it never hashes or chunks anything. Four sections, each addressable by URL hash:
+
+| Section | Shows | Engine call behind it |
+|---|---|---|
+| §1 Chunking `#chunking` | all five strategies over the same window of the log, to scale | `GET /chunks` per strategy |
+| §2 Tree & proof `#proof` | the entry's path on its chunk tree and on the super-tree, with every verification step | `GET /proof/{i}`, `/chunks/{c}/tree`, `/supertree` (`MerkleVerifier.verifyWithTrace`) |
+| §3 Tamper & insert `#tamper` | one change across all six subjects: changed chunks, counted rebuild cost; then anchor → database rewrite → verify | `POST /tamper`; anchors; `PUT /entries/{pos}` |
+| §4 Results `#results` | the committed benchmark as figures and tables | `GET /benchmarks` |
+
+The tree diagrams use the same index arithmetic as `MerkleTree.generateProof` (sibling `i ^ 1`,
+parent `i >> 1`), so the drawing is the stored structure, not an illustration of it. The design
+system ("The Ledger": typography, colour, motion rules) is documented in `frontend/DESIGN.md`.
+Views are checked end to end in a real browser (Playwright driving Edge).

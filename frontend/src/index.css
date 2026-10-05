@@ -266,6 +266,17 @@ body {
   animation: draw var(--draw-duration, 800ms) var(--ease-shift) both;
 }
 
+/* A cost bar grows from zero to its value, in row order, so magnitudes are compared as they land. */
+@keyframes grow-x {
+  from {
+    transform: scaleX(0);
+  }
+}
+.grow-x {
+  transform-origin: left center;
+  animation: grow-x var(--dur-reveal) var(--ease-arrive) both;
+}
+
 /* Loading: a slow sweep across a placeholder, so space is held and nothing jumps. */
 @keyframes sweep {
   from {

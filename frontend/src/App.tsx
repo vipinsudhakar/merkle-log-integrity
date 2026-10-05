@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { api, type DatasetInfo, type Params } from './api'
 import { ChunkingStrip } from './components/ChunkingStrip'
+import { Results } from './components/Results'
+import { Tamper } from './components/Tamper'
 import { TreeProof } from './components/TreeProof'
 import { fmt } from './strategies'
 import { Tabs, type TabItem } from './ui/Tabs'
@@ -11,8 +13,8 @@ type Tab = 'chunking' | 'proof' | 'tamper' | 'results'
 const TABS: TabItem<Tab>[] = [
   { id: 'chunking', number: '01', label: 'Chunking', ready: true },
   { id: 'proof', number: '02', label: 'Tree & proof', ready: true },
-  { id: 'tamper', number: '03', label: 'Tamper & insert', ready: false },
-  { id: 'results', number: '04', label: 'Results', ready: false },
+  { id: 'tamper', number: '03', label: 'Tamper & insert', ready: true },
+  { id: 'results', number: '04', label: 'Results', ready: true },
 ]
 
 export default function App() {
@@ -29,6 +31,15 @@ export default function App() {
     setTabState(next)
     window.history.replaceState(null, '', '#' + next)
   }
+  // Follow the hash when it changes from outside: Back/Forward, or a link typed into the address bar.
+  useEffect(() => {
+    const onHashChange = () => {
+      const fromHash = window.location.hash.slice(1) as Tab
+      if (TABS.some((t) => t.id === fromHash && t.ready)) setTabState(fromHash)
+    }
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [])
 
   // Proof view selection, shared so a click in the chunking strip can open it.
   const [proofStrategy, setProofStrategy] = useState('caac')
@@ -121,6 +132,8 @@ export default function App() {
             onEntryChange={setProofEntry}
           />
         )}
+        {dataset && tab === 'tamper' && <Tamper key={dataset.id} dataset={dataset} />}
+        {tab === 'results' && <Results />}
       </main>
 
       <footer className="border-t border-rule">

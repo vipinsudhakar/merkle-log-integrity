@@ -3,13 +3,30 @@
 Update at the end of every working session. The spec is in `instructions.md`; the rules are in
 `CLAUDE.md`.
 
-_Last updated: 2026-10-05 (end of day 3)_
+_Last updated: 2026-10-05 (end of day 4)_
 
 ---
 
 ## Where we are
 
-- **Days 1–3 are done.** `cd backend && mvn test` → **359 tests, all passing** (no database needed).
+- **Days 1–4 are done.** `cd backend && mvn test` → **359 tests, all passing** (no database needed); `npm --prefix frontend run build` clean.
+- **Day 4 (frontend):**
+  - Design system "The Ledger" (`frontend/DESIGN.md`, `src/ui/`), applied to every view.
+  - **Tamper & insert** (`#tamper`): one edit or insertion vs all six subjects (changed chunks on
+    strips, counted rebuild-cost bars, detection), headline figures; **anchor demo**: anchor →
+    overwrite an entry in PostgreSQL → verify shows REWRITTEN → undo → INTACT.
+  - **Results** (`#results`): Figs. 5–9 (insertion cost, edit cost, chunks changed, proof length with
+    the paper's 14 @ 10k, pressure response), Table 1 (100k summary with × vs CAAC), Table 2 (tamper
+    F1), caveats; legend hover dims other strategies in every chart.
+  - Fixes: **Prove** did nothing when proving the entry already shown (now re-verifies and replays;
+    invalid input shows a message); tabs now follow Back/Forward and typed URL hashes; one-decimal
+    rounding (`oneDecimal`) so 1.15 shows as 1.2 like the docs.
+  - Checked end to end with Playwright driving the installed Edge (insert on demo-10k: CAAC 229
+    hashes vs 10,001 paper pipeline, 1 vs 79 chunks changed vs fixed-size).
+  - Docs refreshed: README rewritten as the project front page (headline table, screenshots in
+    `docs/images/`, regenerated with Playwright from the running app); `instructions.md` §1 and §5
+    describe the system as built; architecture §14; DESIGN.md interactions.
+
 - **Day 3 (API + frontend start):**
   - `persistence/`: JPA entities for the V1 tables; `DatasetService` (batched JDBC inserts,
     in-memory cache, `overwriteMessage` for the attacker demo, `seedDemoData`); `DemoDataSeeder`
@@ -124,26 +141,26 @@ _Last updated: 2026-10-05 (end of day 3)_
 
 Shells opened before these installs need a VS Code restart to see `mvn`, `node`, `psql`.
 
-## Next steps (day 4 — frontend)
+## Next steps (day 5 — ship)
 
-1. **Tamper & insert view**: pick an entry, edit or insert; call `POST /api/datasets/{id}/tamper`;
-   show the six subjects side by side: chunk strips before/after with changed chunks
-   highlighted (`changedChunks`, `chunkSizesBefore/After`), rebuild hash operations as bars,
-   super-root before/after, detected ✓. Headline: insertion cost CAAC vs the rest.
-2. **Results dashboard** (Recharts) from `GET /api/benchmarks`: insertion cost vs n (log scale,
-   the headline), edit cost vs n, chunk roots changed per insertion, proof length vs n (with the
-   paper's 14 @ 10k), throughput, pressure response (paper Fig. 4), tamper P/R/F1 table. State
-   the caveats on the page (Java vs Python; hex bytes; paper pipeline batch size).
-3. **Anchor panel**: anchor → overwrite an entry → verify fails; reseed to restore.
-4. Optional: `GET /api/datasets` → create dataset form (size, seed).
-5. `mvn test` + `npm run build` green → bundled commit → ask before pushing.
+1. **Render deployment**: Dockerfile for the backend (multi-stage Maven → JRE 21), Render web
+   service with `DATABASE_URL` (convert Render's `postgres://` URL to JDBC form), `DATABASE_USERNAME`,
+   `DATABASE_PASSWORD`, `APP_CORS_ALLOWED_ORIGINS`; Render Postgres 18 (or the newest Render offers;
+   Flyway 11.20.3 supports 18); static site for `frontend/` with `VITE_API_BASE`. Seed happens on
+   startup when the database is empty. Free tier sleeps: open it a minute before the review.
+2. **End-review PPT**, built from the real figures: problem → base paper and its limits (L4, live
+   memory sizing) → CAAC → results (Fig. 5 is the headline) → live demo (§2 proof climb, §3 insert,
+   §3.1 anchor) → limitations → credit. Use `?theme=light` screenshots.
+3. Final pass on README/architecture; rehearse the demo; decide whether to re-run the benchmark on
+   the presentation machine.
+4. Optional: a "create dataset" form (size, seed) on the frontend; the API already supports it.
 
 Running locally: `cd backend && mvn spring-boot:run` (or `java -jar target/*.jar`), then
-`npm --prefix frontend run dev`; open http://localhost:5173. Headless screenshots for checking:
-`msedge --headless=new --screenshot=out.png --window-size=1400,1200 --virtual-time-budget=10000 "http://localhost:5173/#proof"`.
+`npm --prefix frontend run dev`; open http://localhost:5173. Browser checks: Playwright
+(`playwright-core`, channel `msedge`) from a scratch folder, not a project dependency.
 
 ## Commit tally
 
 | Date | Commits | Notes |
 |---|---|---|
-| 2026-10-05 | 4 | (1) docs overhaul; (2) day-1 engine; (3) day-2 benchmarks + Spring Boot / Flyway / PostgreSQL — all pushed; (4) day-3 API, persistence, anchors, frontend chunking + proof views |
+| 2026-10-05 | 6 | (1) docs overhaul; (2) day-1 engine; (3) day-2 benchmarks + Spring Boot / Flyway / PostgreSQL; (4) day-3 API + visualiser; (5) design system; (6) day-4 tamper/insert, anchor demo, results, Prove fix — amended (before pushing) to include the README rewrite with screenshots (`docs/images/`) and the doc refresh, to stay within the limit. **All pushed. Daily limit reached.** |

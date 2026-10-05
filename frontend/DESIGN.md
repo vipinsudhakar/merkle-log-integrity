@@ -90,6 +90,10 @@ for state changes. Durations are named by intent: `--dur-feedback` 140 ms, `--du
 | **Hash avalanche** — a hash that changes scrambles and resolves left to right | One changed byte changes every character of SHA-256. Change the fixed chunk size and watch only the roots that depend on it re-resolve. |
 | **Chunk glide** — chunks keep their identity and glide when boundaries move | Which boundaries moved and which held still: locality, made visible. |
 | **Ink rule** — one rule slides under the active section tab | You are moving through one document, not between apps. |
+| **Cost bars grow** — rebuild-cost bars grow from zero in row order | Magnitudes are compared as they land: CAAC's sliver against the paper's full bar. |
+| **Changed chunks mark in** — after a change, the chunks whose root changed fill in vermilion | Where the change landed, per strategy: one block for CAAC, a whole tail for count-based cutting. |
+| **Legend focus** — hovering a strategy in the Results legend dims the others in every chart | Follow one strategy through every metric at once. |
+| **Procedure** — the anchor demo's steps darken their top rule when done; later steps stay faded until reachable | The demo has an order (anchor → attack → verify), and the page enforces it. |
 | **Press** — buttons that compute sink 1 px | Acknowledgement, nothing more. |
 | **Copy** — click any hash to copy it; "copied" rises briefly | Hashes are evidence you can take with you. |
 | **Sweep placeholder** — slow sweep where data will land | Space is held; nothing jumps when results arrive. |
@@ -105,6 +109,10 @@ for state changes. Durations are named by intent: `--dur-feedback` 140 ms, `--du
 | `Seal` | Verified / tampered verdict, stamped. Re-mount via `key` to stamp again. |
 | `Tabs` | Numbered section tabs with the sliding ink rule; the URL hash tracks the tab. |
 | `ThemeToggle` | Paper / night, remembered per browser; `?theme=dark` forces it (screenshots, slides). |
+
+View-level patterns (in `src/components/`): the **label rail + strip** grid for comparing
+strategies row by row (§1, §3), **headline figures** (big serif number, kicker unit, one-line
+explanation) at the top of §3 and §4, and **numbered procedures** for multi-step demos (§3.1).
 
 ## 7. Writing
 

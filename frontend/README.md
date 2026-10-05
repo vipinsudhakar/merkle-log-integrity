@@ -24,8 +24,8 @@ In production, set `VITE_API_BASE` to the API's URL at build time (for example
 |---|---|
 | Chunking (`#chunking`) | The same log stream cut by all five strategies, to scale, with parameters and memory pressure adjustable. Click a chunk to open its proof. |
 | Tree & proof (`#proof`) | An entry's two-stage proof drawn on the real trees (chunk tree, then super-tree), with every verification hash. |
-| Tamper & insert | Coming next. |
-| Results | Coming next: the benchmark graphs from `docs/benchmarks/results.json`. |
+| Tamper & insert (`#tamper`) | One edit or insertion compared across all five strategies and the paper's pipeline: changed chunks, counted rebuild cost, detection. Then the trusted-anchor demo: anchor, rewrite an entry in PostgreSQL, verify (fails), undo. |
+| Results (`#results`) | The committed benchmark (`docs/benchmarks/results.json`) as figures and tables; hover a strategy in the legend to follow it through every figure. |
 
 Design system ("The Ledger": typography, colour, space, motion, primitives): [`DESIGN.md`](DESIGN.md).
 

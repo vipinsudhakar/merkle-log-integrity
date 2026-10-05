@@ -56,3 +56,12 @@ Six subjects, all measured by the same code (`benchmark/Subject.java`):
   pressure (Eq. 1–2 with our defaults); larger batches would lower its ingest cost, but not its
   edit or insertion cost, which is always about n.
 - `heapMb` is approximate: used heap after GC with the structure alive, minus before.
+
+## Where these numbers appear
+
+- The visualiser's **Results** section (`#results`) draws `results.json` as Figs. 5–9 and
+  Tables 1–2; the API serves it at `GET /api/benchmarks` (copied onto the classpath at build).
+- The headline table in the top-level [`README.md`](../../README.md) is taken from the
+  100,000-entry rows.
+- If you re-run the benchmark, commit the new `results.json` and rebuild the backend so the API
+  serves it; counted metrics will not change, timings will.

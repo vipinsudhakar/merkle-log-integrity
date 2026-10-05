@@ -1,145 +1,109 @@
-# merkle-log-integrity
+# Content-Anchored Adaptive Chunking (CAAC)
 
-**Content-Anchored Adaptive Chunking (CAAC) for tamper-evident log integrity.**
+**Tamper-evident log integrity with Merkle forests, where a change to the log stays local.**
 
-An Advanced DSA course project (B.Tech AI & Data Science). Log entries are SHA-256 hashed
-into Merkle trees, so any change to a single entry is detected and localised in O(log n)
-using inclusion proofs, instead of re-hashing the whole dataset in O(n).
+An Advanced DSA course project (B.Tech AI & Data Science). Log entries are hashed (SHA-256)
+into Merkle trees, so tampering with any entry is detected and pinned down in O(log n) with an
+inclusion proof, instead of re-hashing the whole log. Our contribution is **CAAC**, a chunking
+strategy that extends the adaptive chunking of Yağız, Horasan and Yurttakal (2026) so that
+inserting or editing an entry only touches the chunks around it.
 
-Our contribution is a chunking strategy, CAAC, which extends the adaptive chunking of
-Yağız, Horasan and Yurttakal (2026) so that an edit or insertion only touches the chunks
-around it, instead of forcing a full rebuild.
+![The visualiser: an entry's inclusion proof, verified against the super-root](docs/images/hero.png)
 
-## The idea
+## The result in one table
 
-Logs are split into chunks. Each chunk gets its own Merkle tree, and the chunk roots are
-sealed under one **super-root**, the single hash that gets published as the trusted anchor.
+At 100,000 log entries, the number of SHA-256 operations needed to publish a valid root again
+after one change (exact counts, from [`docs/benchmarks/`](docs/benchmarks/)):
+
+| | After **inserting** one entry | After **editing** one entry | Chunks changed by an insertion |
+|---|---:|---:|---:|
+| Base paper's pipeline (one global tree) | 100,001 | 100,000 | — |
+| Fixed-size chunking | 100,839 | 1,624 | 782 |
+| Paper's resource-aware sizing | 100,783 | 1,497 | 715 |
+| Time-window chunking | 7,931 | 7,909 | 1.0 |
+| Entropy chunking | 5,196 | 5,149 | 1.7 |
+| **CAAC (ours)** | **1,603** | **1,491** | **1.2** |
+
+- **~62× fewer hashes than the base paper** to absorb an insertion, and ~67× fewer for an edit.
+  The gap grows with the log (27× at 10k entries).
+- **Count-based chunking shifts every later boundary** on an insertion; CAAC re-synchronises
+  after about one chunk.
+- **Time-window and entropy chunking are local too**, but they cut 3.7–5.6× more, much smaller
+  chunks, so every rebuild costs 3–5× more, and they ignore the device's memory budget. CAAC is
+  the only strategy that keeps insertions local *and* keeps chunk sizes at the paper's
+  memory-aware target.
+- **What CAAC does not change:** proofs are ~17 hashes at 100k for every strategy (all
+  O(log n)), and tamper detection is 100% for every strategy, as in the paper.
+
+## How it works
+
+The log is split into **chunks**. Each chunk gets its own Merkle tree, and the chunk roots are
+sealed under one **super-root**: the single hash that is published as the trusted anchor.
 
 ```
-                     super-root            <- published / anchored
+                     super-root            <- published (the trusted anchor)
                  /       |       \
            root(C0)   root(C1)   root(C2)  <- one Merkle tree per chunk
             /   \       /   \       /   \
-          ...   ...   ...   ...   ...   ...  <- log entries
+          ...   ...   ...   ...   ...   ...  <- log entries, hashed into leaves
 ```
 
-How the log is cut into chunks decides how long proofs are, and how much has to be
-re-hashed when something changes. That is what this project compares.
+Proving one entry is two short climbs: from the entry to its chunk root, then from the chunk
+root to the super-root, about log₂ n hashes in all. Where the log is cut decides how much must
+be re-hashed when the log changes, and that is what this project is about.
 
-## The base paper, and what we change
+### The base paper, and what CAAC changes
 
-In the base paper, chunk size adapts to memory pressure (their Eq. 1–2): smaller batches when
-memory is tight, larger when it is free. But the chunks do not shape the tree: the paper keeps
-**one global tree and rebuilds it after every batch**, which is O(n) per batch (their stated
-limitation L4). The cut points also depend on how much memory happens to be free, so the same
-log can split differently on different runs.
+The base paper sizes its batches from memory pressure (its Eq. 1–2): smaller batches when memory
+is tight. But its batches do not shape the tree: it keeps **one global tree and rebuilds it after
+every batch**, O(n) each time (the paper's own limitation L4), and its cut points depend on how
+much memory happens to be free.
 
-**CAAC keeps the paper's memory-aware size range and adds two things:**
+CAAC keeps the paper's sizing rule unchanged and adds two things:
 
-1. **Content-anchored cut points.** Inside the size range, a chunk ends after an entry whose
-   leaf hash matches a bit pattern. Cut points depend on the content itself, so the same log
-   always splits the same way, and inserting or editing one entry only moves the boundaries
-   next to it.
-2. **One tree per chunk.** An edit re-hashes one chunk plus the small super-tree, O(c + k),
-   instead of the whole log.
+1. **Content-anchored cut points.** Inside the paper's size range, a chunk ends after an entry
+   whose leaf hash has its low bits all zero. Whether an entry is an anchor depends only on that
+   entry, so an insertion or edit cannot move the boundaries elsewhere in the log, and the same
+   log always splits the same way.
+2. **One tree per chunk.** A change re-hashes the affected chunk plus the small super-tree,
+   O(c + k), instead of the whole log.
 
-> The paper decides **how big** a chunk may be; CAAC also decides **exactly where** to cut,
-> so changes stay local.
+> The paper decides **how big** a chunk may be. CAAC also decides **exactly where** to cut, so
+> changes stay local.
 
-## Strategies compared
+The paper's method is implemented as faithfully as we can, not weakened, and it is credited
+wherever it appears.
 
-| Strategy | Cuts when | Status |
-|---|---|---|
-| Fixed-size | every N entries | ✅ done |
-| Time-window | an entry falls outside the current time window | ✅ done |
-| Entropy | the rolling Shannon entropy of recent payload bytes crosses a threshold | ✅ done |
-| Resource-aware (base paper) | batch size from memory pressure (Eq. 1–2), one global tree rebuilt per batch | ✅ done |
-| **CAAC (ours)** | content-anchored cut inside the memory-aware size range, one tree per chunk | ✅ done |
+## The visualiser
 
-The base paper's method is implemented as faithfully as we can, not weakened, so the
-comparison is fair.
+A React app on top of a Spring Boot API that runs the real engine. The browser never hashes or
+chunks anything itself, so every hash on screen comes from the tested Java code.
 
-## Results
+| | |
+|---|---|
+| **§1 Chunking**: the same log cut by all five strategies, to scale. Change the fixed chunk size or the memory pressure and watch which boundaries move. Click a chunk to prove one of its entries. | ![Chunking](docs/images/chunking.png) |
+| **§2 Tree & proof**: an entry's proof drawn on the real trees. The path climbs one level at a time beside the verifier's trace, and the verdict is stamped at the end. | ![Proof](docs/images/proof.png) |
+| **§3 Tamper & insert**: one edit or insertion, every strategy side by side: which chunks changed and how many hashes the rebuild costs. **§3.1** anchors the root, rewrites an entry directly in PostgreSQL, and shows verification failing. | ![Tamper and insert](docs/images/tamper.png) |
+| **§4 Results**: the benchmark as figures and tables. Hover a strategy to follow it through every figure. | ![Results](docs/images/results.png) |
 
-Full results: [`docs/benchmarks/`](docs/benchmarks/) (`results.json`, `results.csv`, and the
-method). Synthetic IoT logs at the paper's sizes (1k–100k entries); hash-operation counts are
-exact, timings are the mean of 5 runs. Tamper detection is 100 % precision and recall for every
-strategy at 1–50 % corruption, as in the paper's Table 6.
-
-**100,000 entries:**
-
-| Subject | Chunks | Chunk roots changed by one insertion | Hashes to rebuild after an **insertion** | Hashes to rebuild after an **edit** | Proof length (hashes) |
-|---|---|---|---|---|---|
-| Fixed-size | 1,563 | 782 | 100,839 | 1,624 | 16.9 |
-| Time-window | 7,886 | 1.0 | 7,931 | 7,909 | 17.3 |
-| Entropy | 5,129 | 1.7 | 5,196 | 5,149 | 17.4 |
-| Resource-aware (paper's sizing, in our forest) | 1,429 | 715 | 100,783 | 1,497 | 17.4 |
-| **CAAC (ours)** | **1,397** | **1.2** | **1,603** | **1,491** | **17.4** |
-| Base paper's pipeline (one global tree) | 1 | — | 100,001 | 100,000 | 16.9 |
-
-What this shows:
-
-- **Insertion is where CAAC wins.** Count-based cutting (fixed-size, and the paper's sizing)
-  shifts every boundary after an inserted entry, so about half of all chunks must be rebuilt
-  (~100k hashes). The paper's single global tree must be rebuilt in full (100k). CAAC rebuilds
-  about one chunk plus the super-tree: **1,603 hashes, ~63× less**.
-- **Time-window and entropy are local too,** but they make 4–6× more, much smaller chunks, so
-  every rebuild pays for a bigger super-tree: 3–5× CAAC's cost. They also ignore the device's
-  memory budget.
-- **Edits cost the same for every forest at similar chunk sizes** (~1,500 hashes for CAAC,
-  fixed-size and resource-aware), and ~67× less than the paper's full rebuild.
-- **Proofs stay O(log n)** for everyone: ~17 hashes at 100k. The global tree is 14 hashes at
-  10k, matching the paper's 14.
-- **CAAC still adapts to memory pressure** like the paper's method: under the paper's stress
-  profile its chunks shrink from ~70 to ~8 entries and recover afterwards.
-
-So CAAC is the only strategy that keeps insertions local **and** keeps chunk sizes at the
-paper's memory-aware target.
-
-Caveats: our engine is Java and the paper's is Python, so absolute timings are not comparable.
-The paper reports proof sizes with hex-encoded hashes, so we compare hash counts, not bytes. The
-paper's pipeline rebuilds its tree after every 70-entry batch (Algorithm 1 as published), which
-makes its ingest slow at large n; bigger batches would help its ingest, but not its edit or
-insertion cost.
-## Visualiser
-
-A React app backed by a Spring Boot API that runs the real engine; the browser never hashes or
-chunks anything itself.
-
-- ✅ **Chunking**: the same log stream cut by all five strategies, to scale. Adjust the fixed
-  chunk size and the memory-pressure profile; click a chunk to open its proof.
-- ✅ **Tree and proof**: an entry's two-stage proof drawn on the real trees (its chunk's tree,
-  then the super-tree), with every hash the verifier computes.
-- ⏳ **Tamper and insert**: change or insert an entry and see, strategy by strategy, which
-  chunks change and what the rebuild costs (the API endpoint is done).
-- ⏳ **Results dashboard**: the benchmark graphs, plus the anchored-root history.
-
-The API also implements the paper's **trusted root anchor**: publish a super-root, overwrite a
-stored entry directly in the database (the attacker), and verification against the anchor fails.
-
-## Stack
-
-- **Backend:** Java 21, Spring Boot 3.5, Maven, JUnit 5 + AssertJ
-- **Frontend:** React (Vite, TypeScript), Tailwind CSS, Recharts
-- **Database:** PostgreSQL 18 (Flyway), for datasets and the trusted root anchor history
-- **Deployment:** Render
+Design system: [`frontend/DESIGN.md`](frontend/DESIGN.md).
 
 ## Running it
 
-Requires Java 21 and Maven; the API and visualiser also need PostgreSQL and Node.js.
+You need Java 21 and Maven; the API and visualiser also need PostgreSQL and Node.js.
+
+**Engine, tests, benchmark** (no database needed):
 
 ```bash
 cd backend
-mvn test                                                    # 359 tests (no database needed)
+mvn test                                                         # 359 tests
 mvn -q compile
-java -cp target/classes com.merklelog.demo.DemoRunner       # console demo, 512 entries
-java -cp target/classes com.merklelog.benchmark.BenchmarkRunner   # benchmark, ~6 min
+java -cp target/classes com.merklelog.demo.DemoRunner            # console walkthrough
+java -cp target/classes com.merklelog.benchmark.BenchmarkRunner  # full benchmark, ~6 min
 ```
 
-The console demo walks through the hash primitives, building the forest, an inclusion proof
-with its full verification trace, tamper detection and localisation, rebuild cost, and a
-comparison of the chunking strategies. The synthetic log stream uses a fixed seed, so every
-run prints identical hashes; a captured run is in [`docs/demo-output.txt`](docs/demo-output.txt).
+The console demo uses a fixed-seed log, so it prints the same hashes on every machine; a captured
+run is in [`docs/demo-output.txt`](docs/demo-output.txt).
 
 **API and visualiser:**
 
@@ -147,34 +111,77 @@ run prints identical hashes; a captured run is in [`docs/demo-output.txt`](docs/
 # once: a database and user for the app
 psql -U postgres -c "CREATE ROLE merklelog LOGIN PASSWORD '<password>'"
 psql -U postgres -c "CREATE DATABASE merklelog OWNER merklelog"
-# put the password in backend/config/application.yml (git-ignored):
+# then put the password in backend/config/application.yml (git-ignored):
 #   spring:
 #     datasource:
 #       password: <password>
 
-cd backend && mvn spring-boot:run      # API on :8080; creates the schema and seeds demo datasets
-cd frontend && npm install && npm run dev   # visualiser on http://localhost:5173
+cd backend  && mvn spring-boot:run          # API on :8080; creates the schema, seeds demo logs
+cd frontend && npm install && npm run dev    # visualiser on http://localhost:5173
 ```
 
-Main endpoints (all under `/api`): `GET /strategies`, `GET /datasets`,
-`GET /datasets/{id}/chunks?strategy=caac`, `GET /datasets/{id}/proof/{i}?strategy=caac`,
-`POST /datasets/{id}/tamper`, `POST|GET /datasets/{id}/anchors`,
-`GET /datasets/{id}/anchors/verify?strategy=caac`, `GET /benchmarks`, `POST /admin/seed`.
+<details>
+<summary>API endpoints</summary>
+
+All under `/api`; strategies are chosen with `?strategy=` plus optional parameters, e.g.
+`?strategy=fixed-size&chunkSize=32` or `?strategy=caac&pressureProfile=0.25,0.85`.
+
+| Method | Path | |
+|---|---|---|
+| GET | `/strategies` | the five strategies and their defaults |
+| GET / POST | `/datasets` | list or generate stored logs |
+| GET | `/datasets/{id}/entries?offset=&limit=` | entries with their leaf hashes |
+| GET | `/datasets/{id}/chunks` | boundaries, sizes, chunk roots, super-root |
+| GET | `/datasets/{id}/chunks/{c}/tree`, `/datasets/{id}/supertree` | trees as levels of hashes |
+| GET | `/datasets/{id}/proof/{i}` | two-stage proof with every verification step |
+| POST | `/datasets/{id}/tamper` | one edit or insertion compared across all strategies |
+| POST / GET | `/datasets/{id}/anchors`, `/datasets/{id}/anchors/verify` | trusted root anchor |
+| PUT | `/datasets/{id}/entries/{pos}` | rewrite a stored entry (the attacker, for the demo) |
+| GET | `/benchmarks` | the committed benchmark results |
+| POST | `/admin/seed` | rebuild the demo data from an empty database |
+
+</details>
+
+## Under the hood
+
+- **Hashing:** real SHA-256 with RFC 6962 domain separation (`0x00` leaf / `0x01` node prefix);
+  an odd node is promoted, never duplicated (avoids the Bitcoin CVE-2012-2459 forgery).
+- **Trees** are stored as arrays of levels, so a proof is pure index arithmetic (sibling `i ^ 1`,
+  parent `i >> 1`): genuinely O(log n), never a scan.
+- **Rebuild costs are counted, not estimated:** every leaf and node hash increments a counter,
+  and the tests assert the counted work.
+- **Stack:** Java 21 · Spring Boot 3.5 · PostgreSQL 18 (Flyway) · React + TypeScript (Vite) ·
+  Tailwind CSS · Recharts. The engine (`core/`, `chunking/`, `benchmark/`) has no Spring code
+  and is tested with plain JUnit.
+
+Details: [`docs/architecture.md`](docs/architecture.md) (design and complexity),
+[`docs/benchmarks/README.md`](docs/benchmarks/README.md) (benchmark method),
+[`instructions.md`](instructions.md) (full project spec).
+
+## Caveats we state up front
+
+- The data is synthetic IoT logs with a fixed seed, at the paper's sizes (1k–100k entries); the
+  paper also uses synthetic data.
+- Our engine is Java and the paper's is Python, so absolute timings are not comparable; hash
+  counts are.
+- The paper reports proof sizes with hex-encoded hashes (1,006 B for 14 hashes); we compare hash
+  counts, and our global tree reproduces its 14 hashes at 10k entries.
+- The paper's pipeline rebuilds its tree after every batch (Algorithm 1 as published), which makes
+  its ingest slow at large n. Larger batches would speed up its ingest, but not its edit or
+  insertion cost, which is always about n.
+- CAAC's boundaries are content-anchored *within* a memory-pressure regime: when the pressure
+  changes, its size range (and so some boundaries) changes with it.
+- Entropy chunking on short log messages is a weak signal (a 32-byte window cannot measure more
+  than 5 bits/byte); it is guarded with minimum and maximum chunk sizes.
 
 ## Status
 
-- ✅ **Core engine**: RFC 6962 hashing, Merkle trees, inclusion proofs, verifier, per-chunk
-  forest, console demo
-- ✅ **Strategies**: all five, including CAAC and the base paper's method, plus the paper's
-  global-tree pipeline; localised rebuild with counted hash operations
-- ✅ **Benchmarks**: five strategies + the paper's pipeline at the paper's sizes, 5 runs each
-- ✅ **API and database**: Spring Boot 3.5 REST API, PostgreSQL 18 (Flyway), trusted root anchors.
-  359 tests, all passing.
-- ⏳ **Visualiser**: chunking and tree/proof views done; tamper/insert and results next
-- ⏳ **Deployment** on Render
-
-Design details: [`docs/architecture.md`](docs/architecture.md). Full project spec:
-[`instructions.md`](instructions.md).
+- ✅ Engine: hashing, trees, proofs, Merkle forest, five chunking strategies, the paper's
+  pipeline, counted localised rebuilds
+- ✅ Benchmark at the paper's sizes, 5 runs each ([results](docs/benchmarks/))
+- ✅ REST API, PostgreSQL persistence, trusted root anchors (359 tests, all passing)
+- ✅ Visualiser: chunking, tree & proof, tamper & insert, results
+- ⏳ Deployment on Render
 
 ## Team
 
@@ -187,4 +194,4 @@ Design details: [`docs/architecture.md`](docs/architecture.md). Full project spe
 
 Yağız, M. A., Horasan, F., Yurttakal, A. H. *Lightweight Tamper-Evident Log Integrity
 Verification for IoT Edge Environments: A Merkle-Tree Pipeline with Adaptive Chunking.*
-arXiv:2605.00065, 2026.
+arXiv:2605.00065, 2026. Our baseline implements its Eq. 1–2 and Algorithm 1; CAAC extends them.

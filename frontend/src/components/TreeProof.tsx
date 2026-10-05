@@ -32,6 +32,10 @@ export function TreeProof({ dataset, strategy, params, entryIndex, onStrategyCha
   const [error, setError] = useState<string | null>(null)
   const [draft, setDraft] = useState(String(entryIndex))
   const [draftFor, setDraftFor] = useState(entryIndex)
+  const [inputError, setInputError] = useState<string | null>(null)
+  // Bumped by every Prove click, so proving the entry already on screen still re-verifies it
+  // and replays the climb, instead of doing nothing.
+  const [run, setRun] = useState(0)
   if (draftFor !== entryIndex) {
     // The entry changed from outside (a chunk click, "Random entry"): show it in the box.
     setDraftFor(entryIndex)
@@ -58,11 +62,23 @@ export function TreeProof({ dataset, strategy, params, entryIndex, onStrategyCha
     return () => {
       cancelled = true
     }
-  }, [dataset.id, entryIndex, strategy, params])
+  }, [dataset.id, entryIndex, strategy, params, run])
 
   const go = () => {
-    const value = Number(draft)
-    if (Number.isInteger(value) && value >= 0 && value < dataset.size) onEntryChange(value)
+    const value = Number(draft.trim().replace(/,/g, ''))
+    if (draft.trim() === '' || !Number.isInteger(value) || value < 0 || value >= dataset.size) {
+      setInputError(`Enter a whole number from 0 to ${fmt(dataset.size - 1)}.`)
+      return
+    }
+    setInputError(null)
+    onEntryChange(value)
+    setRun((r) => r + 1)
+  }
+
+  const random = () => {
+    setInputError(null)
+    onEntryChange(Math.floor(Math.random() * dataset.size))
+    setRun((r) => r + 1)
   }
 
   // Timeline: stage 1 climbs its levels, then stage 2 climbs its levels, then the stamp.
@@ -70,7 +86,7 @@ export function TreeProof({ dataset, strategy, params, entryIndex, onStrategyCha
   const stage2Levels = superTree ? superTree.levels.length - 1 : 0
   const stage2Start = stage1Levels * STEP_MS + 120
   const stampAt = stage2Start + stage2Levels * STEP_MS + 120
-  const runKey = proof ? `${strategy}:${proof.entry.position}:${JSON.stringify(params)}` : ''
+  const runKey = proof ? `${strategy}:${proof.entry.position}:${JSON.stringify(params)}:${run}` : ''
 
   return (
     <Section
@@ -91,10 +107,14 @@ export function TreeProof({ dataset, strategy, params, entryIndex, onStrategyCha
         </Field>
         <Field label={`Entry · 0–${fmt(dataset.size - 1)}`}>
           <input
-            className="field figures w-28"
+            className={`field figures w-28 ${inputError ? 'border-tampered' : ''}`}
             inputMode="numeric"
+            aria-invalid={inputError !== null}
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => {
+              setDraft(e.target.value)
+              setInputError(null)
+            }}
             onKeyDown={(e) => e.key === 'Enter' && go()}
           />
         </Field>
@@ -102,10 +122,11 @@ export function TreeProof({ dataset, strategy, params, entryIndex, onStrategyCha
           <button className="btn-ink" onClick={go}>
             Prove
           </button>
-          <button className="btn" onClick={() => onEntryChange(Math.floor(Math.random() * dataset.size))}>
+          <button className="btn" onClick={random}>
             Random entry
           </button>
         </div>
+        {inputError && <p className="basis-full text-small text-tampered">{inputError}</p>}
       </div>
 
       {error && (
