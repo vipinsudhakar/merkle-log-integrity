@@ -1,43 +1,44 @@
 # CLAUDE.md
 
-**Before starting work, read `instructions.md` (full project detail, locked design
-decisions, constraints) and `handoff.md` (current progress and next steps) if they are
-present in the working directory.**
+**Before starting work, read `instructions.md` (full project spec, locked design decisions,
+roadmap) and `handoff.md` (current progress, known issues, next steps).**
 
-Both are **git-ignored local working notes**, not repository files — they change constantly
-and are not worth a commit each. They will therefore be missing from a fresh clone. If they
-are absent, fall back to this file plus `docs/architecture.md`, and say so rather than
-guessing at project state.
+Both are tracked in git. They used to be git-ignored local notes and were lost with a laptop
+in October 2026 — keep them committed. Update `handoff.md` at the end of every session.
 
 ## Project
 
-Merkle tree–based tamper-evident log integrity verification system. Advanced DSA course
-project (B.Tech AI & DS), graded partly by oral viva.
+Merkle tree–based tamper-evident log integrity verification. Advanced DSA course project
+(B.Tech AI & DS), graded partly by oral viva.
 
-Log entries are SHA-256 hashed into leaves of a Merkle tree. Any mutation propagates to the
-root, so tampering is detected AND localized in O(log n) via inclusion proofs, instead of
+Log entries are SHA-256 hashed into leaves of Merkle trees. Any mutation propagates to the
+root, so tampering is detected AND localised in O(log n) via inclusion proofs, instead of
 O(n) full re-hashing.
 
-**Contribution over the base paper** (Yağız, Horasan, Yurttakal 2026, which validates one
-adaptive-chunking approach): we implement and benchmark three chunking strategies —
-fixed-size, time-window, entropy-based — comparing proof size, verification latency, and
-tree rebuild cost.
+**Contribution: Content-Anchored Adaptive Chunking (CAAC).** It extends the resource-aware
+batch sizing of our base paper (Yağız, Horasan, Yurttakal 2026, arXiv:2605.00065, Eq. 1–2)
+with content-defined cut points (low bits of each entry's leaf hash) and one Merkle tree per
+chunk, so an edit or insertion touches only nearby chunks instead of forcing the paper's full
+per-batch rebuild (their limitation L4). It is benchmarked against fixed-size, time-window,
+entropy, and the paper's own method (implemented faithfully). Always credit the paper.
 
 ## Stack
 
-- Backend: Java 21, Spring Boot 3.x, Maven, JUnit 5 + AssertJ
-- Frontend: React (Vite), Tailwind CSS
-- DB: PostgreSQL (Flyway migrations)
-- Deploy: Render — backend web service + static frontend + free Postgres
+- Backend: Java 21, Spring Boot 3.x (latest 3.x — upgrading from 3.3.5), Maven, JUnit 5 + AssertJ
+- Frontend: React (Vite, TypeScript), Tailwind CSS, Recharts
+- DB: PostgreSQL 18 (Flyway migrations) — datasets/log entries + trusted root anchor history
+- Deploy: Render — backend web service (Docker) + static frontend + Postgres
 
 ## Layout
 
-- `backend/src/main/java/com/merklelog/core/`     — Merkle tree, proofs, verifier, forest
-- `backend/src/main/java/com/merklelog/chunking/` — the three strategies
-- `backend/src/main/java/com/merklelog/api/`      — controllers, DTOs, services
+- `backend/src/main/java/com/merklelog/core/`        — Merkle tree, proofs, verifier, forest
+- `backend/src/main/java/com/merklelog/chunking/`    — the five strategies + factory
+- `backend/src/main/java/com/merklelog/benchmark/`   — benchmark runner (writes `docs/benchmarks/`)
+- `backend/src/main/java/com/merklelog/demo/`        — synthetic log generator, console demo
+- `backend/src/main/java/com/merklelog/api/`         — controllers, DTOs, services
 - `backend/src/main/java/com/merklelog/persistence/` — entities, repos, seeding
-- `frontend/src/`                                 — pages, components, api client
-- `docs/`                                         — architecture, benchmarks, viva notes
+- `frontend/src/`                                    — pages, components, api client
+- `docs/`                                            — architecture, benchmarks, demo output
 
 ## Hard constraints
 
@@ -46,12 +47,15 @@ tree rebuild cost.
 2. **Genuine O(log n).** Proof generation and verification must use index arithmetic over
    stored levels (`index ^ 1` for sibling, `index >>= 1` to ascend). No linear scan over
    leaves inside a proof path. If a change would introduce one, stop and flag it.
-3. **`core/` and `chunking/` have zero Spring imports.** They must be testable with plain
-   JUnit and no application context.
+3. **`core/`, `chunking/` and `benchmark/` have zero Spring imports.** They must be testable
+   with plain JUnit and no application context.
 4. **Viva-readable over clever.** Clear names, Javadoc explaining *why*. Assume every line
    may be questioned aloud by an examiner.
 5. **Tests before/with implementation, never bolted on after.** Correctness is the
    deliverable.
+6. **Honest results.** Every number comes from the real engine. The paper baseline is
+   implemented faithfully, never weakened. State caveats (Java vs Python timings, hex vs raw
+   proof bytes, the entropy limitation).
 
 ## Tree rules (deliberate, and asked about in viva)
 
@@ -73,18 +77,23 @@ tree rebuild cost.
 
 Changing any of these changes tested behavior. Don't "fix" them silently.
 
-## Known limitation to state honestly
+## Known limitations to state honestly
 
-Shannon entropy estimated over a short byte window is biased low and noisy, so for short log
-payloads the entropy boundary signal degrades toward arbitrary. Guarded with min/max chunk
-size. Document it; do not paper over it in the UI, the README, or the benchmark write-up.
+- Shannon entropy estimated over a short byte window is biased low and noisy, so for short log
+  payloads the entropy boundary signal degrades toward arbitrary. Guarded with min/max chunk
+  size. Document it; do not paper over it in the UI, the README, or the benchmark write-up.
+- CAAC boundaries are content-anchored *within* a memory-pressure regime; when the simulated
+  pressure changes, the size range (and therefore some boundaries) changes too.
 
 ## Workflow
 
-- Build phase by phase in the agreed order; do not jump ahead.
-- **Max 6 commits per day.** Small, incremental, individually-working commits — not one big
-  commit per phase. Track usage in `handoff.md`.
-- **Never push without explicit approval.** Local commits are fine; pushing is not.
+- Build in the order of the roadmap in `instructions.md` §7; do not jump ahead.
+- **Max 6 commits per day, each a large bundled commit** of working, tested changes (not
+  many tiny commits). Track usage in the `handoff.md` commit tally.
+- **Never push without explicit approval — ask before every push.** Local commits are fine.
+- **Never credit Claude or any AI as an author or contributor.** No `Co-Authored-By` trailers,
+  no "Generated with Claude Code" lines, in commits, PR descriptions, docs or code comments.
+  Commits are authored by the team member only.
 - `mvn test` must be green before any commit.
 - Update `handoff.md` at the end of every working session.
 - Render's free Postgres expires every 30 days — the seed path must rebuild all data from an
@@ -95,7 +104,8 @@ size. Document it; do not paper over it in the UI, the README, or the benchmark 
 
 ## Commands
 
-- `cd backend && mvn test`            — unit tests
-- `cd backend && mvn spring-boot:run` — API (Phase 2+)
-- `cd frontend && npm run dev`        — frontend dev server
-- `POST /api/admin/seed`              — rebuild synthetic data from scratch
+- `cd backend && mvn test`                                         — unit tests
+- `cd backend && mvn -q compile && java -cp target/classes com.merklelog.demo.DemoRunner` — console demo
+- `cd backend && mvn spring-boot:run`                              — API (day 2+)
+- `cd frontend && npm run dev`                                     — frontend dev server (day 3+)
+- `POST /api/admin/seed`                                           — rebuild demo data from scratch

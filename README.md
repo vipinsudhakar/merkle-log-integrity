@@ -1,60 +1,131 @@
 # merkle-log-integrity
 
-Tamper-evident log integrity verification using Merkle trees, with a
-comparative analysis of chunking strategies.
+**Content-Anchored Adaptive Chunking (CAAC) for tamper-evident log integrity.**
 
-An Advanced DSA course project (B.Tech AI & Data Science). Detects and
-localizes tampering in log data in O(log n) time using Merkle inclusion
-proofs, instead of O(n) full-dataset re-hashing.
+An Advanced DSA course project (B.Tech AI & Data Science). Log entries are SHA-256 hashed
+into Merkle trees, so any change to a single entry is detected and localised in O(log n)
+using inclusion proofs, instead of re-hashing the whole dataset in O(n).
 
-## What it does
+Our contribution is a chunking strategy, CAAC, which extends the adaptive chunking of
+Yağız, Horasan and Yurttakal (2026) so that an edit or insertion only touches the chunks
+around it, instead of forcing a full rebuild.
 
-Log entries are hashed (SHA-256) and organized into a Merkle tree. Any
-change to a single entry propagates to the root hash, enabling fast,
-localized tamper detection via Merkle proofs — without blockchain overhead.
+## The idea
 
-## Contribution
+Logs are split into chunks. Each chunk gets its own Merkle tree, and the chunk roots are
+sealed under one **super-root**, the single hash that gets published as the trusted anchor.
 
-Extends the base paper (Yağız, Horasan, Yurttakal, 2026) by implementing
-and benchmarking three chunking strategies — fixed-size, time-window-based,
-and entropy-based — comparing their effect on proof size, verification
-latency, and tree rebuild cost.
+```
+                     super-root            <- published / anchored
+                 /       |       \
+           root(C0)   root(C1)   root(C2)  <- one Merkle tree per chunk
+            /   \       /   \       /   \
+          ...   ...   ...   ...   ...   ...  <- log entries
+```
+
+How the log is cut into chunks decides how long proofs are, and how much has to be
+re-hashed when something changes. That is what this project compares.
+
+## The base paper, and what we change
+
+In the base paper, chunk size adapts to memory pressure (their Eq. 1–2): smaller batches when
+memory is tight, larger when it is free. But the chunks do not shape the tree: the paper keeps
+**one global tree and rebuilds it after every batch**, which is O(n) per batch (their stated
+limitation L4). The cut points also depend on how much memory happens to be free, so the same
+log can split differently on different runs.
+
+**CAAC keeps the paper's memory-aware size range and adds two things:**
+
+1. **Content-anchored cut points.** Inside the size range, a chunk ends after an entry whose
+   leaf hash matches a bit pattern. Cut points depend on the content itself, so the same log
+   always splits the same way, and inserting or editing one entry only moves the boundaries
+   next to it.
+2. **One tree per chunk.** An edit re-hashes one chunk plus the small super-tree, O(c + k),
+   instead of the whole log.
+
+> The paper decides **how big** a chunk may be; CAAC also decides **exactly where** to cut,
+> so changes stay local.
+
+## Strategies compared
+
+| Strategy | Cuts when | Status |
+|---|---|---|
+| Fixed-size | every N entries | ✅ done |
+| Time-window | an entry falls outside the current time window | ✅ done |
+| Entropy | the rolling Shannon entropy of recent payload bytes crosses a threshold | ✅ done |
+| Resource-aware (base paper) | batch size from memory pressure (Eq. 1–2), one global tree rebuilt per batch | ⏳ in progress |
+| **CAAC (ours)** | content-anchored cut inside the memory-aware size range, one tree per chunk | ⏳ in progress |
+
+The base paper's method is implemented as faithfully as we can, not weakened, so the
+comparison is fair.
+
+## What we measure
+
+At the paper's dataset sizes (1k, 5k, 10k, 50k and 100k entries), averaged over 5 runs:
+
+- **Rebuild cost after an edit**, counted as hash operations
+- **Chunk roots changed after inserting one entry** (edit locality)
+- Proof length and size, compared with the paper's 14-hash proofs at 10k entries
+- Verification time, ingestion throughput, peak memory
+- Chunk-size distribution, and how chunk sizes react to a simulated memory-pressure profile
+- Tamper detection precision, recall and F1 at 1–50 % corruption
+
+Caveats we state up front: our engine is Java and the paper's is Python, so absolute timings
+are not directly comparable. The paper reports proof sizes using hex-encoded hashes, so we
+compare hash counts rather than bytes.
+
+## Visualiser (in progress)
+
+A React app backed by a Spring Boot API that runs the real engine:
+
+- **Chunking strip**: the log stream with each strategy's cut points; adjust parameters and
+  memory pressure
+- **Tree and proof**: draw a chunk's Merkle tree and step through an entry's proof up to the
+  super-root
+- **Tamper and insert**: change or insert an entry and see, strategy by strategy, which
+  hashes and chunks change
+- **Results dashboard**: the benchmark graphs, plus the history of anchored roots
 
 ## Stack
 
-- **Frontend:** React (Vite), Tailwind CSS
-- **Backend:** Java 21 + Spring Boot
-- **Database:** PostgreSQL
+- **Backend:** Java 21, Spring Boot 3, Maven, JUnit 5 + AssertJ
+- **Frontend:** React (Vite, TypeScript), Tailwind CSS, Recharts
+- **Database:** PostgreSQL 18 (Flyway), for datasets and the trusted root anchor history
 - **Deployment:** Render
 
-## Running the console demo
+## Running it
 
-The core integrity engine is complete and can be demonstrated from the command
-line while the React front end is still being built:
+Requires Java 21 and Maven.
 
 ```bash
 cd backend
-mvn test                                            # 260 unit tests
+mvn test                                                    # 260 unit tests
 mvn -q compile
-java -cp target/classes com.merklelog.demo.DemoRunner       # 512 entries
+java -cp target/classes com.merklelog.demo.DemoRunner       # console demo, 512 entries
 java -cp target/classes com.merklelog.demo.DemoRunner 2048  # any size
 ```
 
-It walks through hash primitives, forest construction, an inclusion proof with
-its full verification trace, tamper detection and O(log n) localization,
-rebuild cost, and a side-by-side comparison of the three chunking strategies.
-The synthetic log stream uses a fixed RNG seed, so every run prints identical
-hashes. A captured run is committed at [`docs/demo-output.txt`](docs/demo-output.txt).
+The console demo walks through the hash primitives, building the forest, an inclusion proof
+with its full verification trace, tamper detection and localisation, rebuild cost, and a
+comparison of the chunking strategies. The synthetic log stream uses a fixed seed, so every
+run prints identical hashes; a captured run is in [`docs/demo-output.txt`](docs/demo-output.txt).
+
+The API (`mvn spring-boot:run`) and the frontend (`cd frontend && npm run dev`) are coming
+next.
 
 ## Status
 
-🚧 In development.
+- ✅ **Core engine**: RFC 6962 hashing, Merkle trees, inclusion proofs, verifier, per-chunk
+  forest, three classic chunking strategies, console demo. 260 tests, all passing.
+- ⏳ **Engine, part 2**: CAAC, the base paper's method, localised-rebuild fix with counted
+  hash operations
+- ⏳ **Benchmarks**: all five strategies at the paper's sizes
+- ⏳ **API and database**: Spring Boot REST API, PostgreSQL
+- ⏳ **Visualiser**: the four views above
+- ⏳ **Deployment** on Render
 
-- ✅ **Phase 1** — core DSA: hashing, Merkle tree, inclusion proofs, verifier,
-  forest model, three chunking strategies. 260 unit tests, all passing.
-- ⏳ **Phase 2–3** — REST API, PostgreSQL persistence.
-- ⏳ **Phase 4–8** — React visualization, tamper simulation UI, strategy
-  comparison page, benchmark dashboard, deployment.
+Design details: [`docs/architecture.md`](docs/architecture.md). Full project spec:
+[`instructions.md`](instructions.md).
 
 ## Team
 
@@ -65,6 +136,6 @@ hashes. A captured run is committed at [`docs/demo-output.txt`](docs/demo-output
 
 ## Reference
 
-Yağız, Horasan, Yurttakal. *Lightweight Tamper-Evident Log Integrity
-Verification for IoT Edge Environments: A Merkle-Tree Pipeline with
-Adaptive Chunking.* 2026.
+Yağız, M. A., Horasan, F., Yurttakal, A. H. *Lightweight Tamper-Evident Log Integrity
+Verification for IoT Edge Environments: A Merkle-Tree Pipeline with Adaptive Chunking.*
+arXiv:2605.00065, 2026.

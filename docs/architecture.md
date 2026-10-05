@@ -3,8 +3,9 @@
 How the core works and why it is built this way. Written to be read aloud in a viva —
 every design choice below has a reason attached.
 
-Status: Phase 1 complete (core DSA logic). Phases 2–8 add the API, persistence and UI on
-top of this without changing it.
+Status: Phase 1 complete (core DSA logic). The project objective changed in October 2026 to
+**Content-Anchored Adaptive Chunking (CAAC)**; see §12 and `instructions.md`. The API,
+persistence and UI are built on top of this core without changing its guarantees.
 
 ---
 
@@ -250,7 +251,7 @@ changes tested behaviour.
 
 ## 11. Test coverage (Phase 1)
 
-**242 tests, all passing.** `cd backend && mvn test`
+**260 tests, all passing.** `cd backend && mvn test`
 
 | Suite | Covers |
 |---|---|
@@ -262,3 +263,33 @@ changes tested behaviour.
 | `Chunking*Test` | Per-strategy behaviour plus one shared invariant suite run against all three |
 | `MerkleForestTest` | Two-stage proofs under every strategy; localised rebuild; all three degenerate cases |
 | `MerklePropertyTest` | Randomised sizes (fixed seed); **every single-bit flip** of every payload detected, 100% |
+
+---
+
+## 12. Known issue and planned work
+
+### Known issue — rebuild is not yet localised in the code
+
+§7 and §9 describe the intended cost of a rebuild after tampering: **O(c + k)**, one chunk plus
+the super-tree. The current `MerkleForest.withEntryReplaced` does not achieve it yet. It passes
+the full chunk list to `fromChunks`, which re-hashes **every** chunk, so the real work is O(n).
+`RebuildResult.entriesRehashed` reports the size of the edited chunk (what *should* be
+re-hashed), and the tests only check that reported number.
+
+The fix (first item of the roadmap): reuse the untouched chunk trees, rebuild only the edited
+chunk and the super-tree, and count hash operations in `Hashing` so tests assert the work
+actually done rather than a reported figure.
+
+### Planned — CAAC and the base-paper baseline
+
+Two strategies are added on top of this core (full spec in `instructions.md` §3):
+
+- **`resource-aware`**: the base paper's method (Yağız et al. 2026, Eq. 1–2), batch size
+  from memory pressure under a simulated deterministic profile, with the paper's pipeline of
+  one global tree rebuilt after every batch. Implemented faithfully as the baseline.
+- **`caac`** (Content-Anchored Adaptive Chunking, our contribution): the same memory-aware
+  size range, but within it a chunk ends after an entry whose leaf hash matches a bit
+  pattern. Boundaries are deterministic and content-defined, so an insertion or edit only
+  moves nearby boundaries, and with one tree per chunk the rebuild stays O(c + k).
+
+Both must satisfy the chunking contract in `ChunkingInvariantTest`.
