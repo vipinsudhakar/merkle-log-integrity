@@ -40,6 +40,20 @@ public interface ChunkingStrategy {
      */
     List<Chunk> chunk(List<LogEntry> entries);
 
+    /**
+     * Splits the entries into chunks when their leaf hashes are already known.
+     *
+     * <p>{@code MerkleForest.build} hashes every entry once for the trees anyway, and passes those
+     * hashes here. A strategy that decides boundaries from leaf hashes ({@link ContentAnchoredChunking})
+     * overrides this to reuse them instead of hashing every entry a second time; the others ignore
+     * them. Either way the result must be identical to {@link #chunk(List)}.
+     *
+     * @param leafHashes {@code leafHashes.get(i)} is {@code entries.get(i).leafHash()}
+     */
+    default List<Chunk> chunk(List<LogEntry> entries, List<byte[]> leafHashes) {
+        return chunk(entries);
+    }
+
     /** Stable identifier used in the API, benchmark labels and the comparison UI. */
     String name();
 

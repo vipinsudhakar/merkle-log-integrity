@@ -215,6 +215,24 @@ class MerkleForestTest {
                     .isEqualTo(MerkleForest.build(edited, new FixedSizeChunking(64)).superRoot());
         }
 
+        @ParameterizedTest(name = "{0}")
+        @MethodSource("com.merklelog.core.MerkleForestTest#allStrategies")
+        @DisplayName("building hashes every entry exactly once, whatever the strategy")
+        void buildHashesEachEntryOnce(ChunkingStrategy strategy) {
+            // CAAC reads leaf hashes to find its anchors; build() hands it the hashes it computes
+            // for the trees anyway, so no strategy pays for a second pass. Cost: n leaves, then
+            // (size - 1) nodes per chunk, then (chunks - 1) in the super-tree.
+            List<LogEntry> input = entries(3_000);
+            long before = Hashing.operationCount();
+            MerkleForest forest = MerkleForest.build(input, strategy);
+            long cost = Hashing.operationCount() - before;
+
+            long nodes = (input.size() - forest.chunkCount()) + (forest.chunkCount() - 1);
+            assertThat(cost).isEqualTo(input.size() + nodes);
+            // Reusing the hashes must not change the boundaries.
+            assertThat(forest.chunks()).isEqualTo(strategy.chunk(input));
+        }
+
         @Test
         @DisplayName("a localised edit costs a small fraction of building the forest")
         void fullBuildCostsMoreThanLocalisedEdit() {

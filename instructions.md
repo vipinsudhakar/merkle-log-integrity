@@ -121,15 +121,19 @@ Properties to prove by tests and benchmarks:
 - **Satisfies the chunking contract** in `ChunkingInvariantTest` (partition, no empty chunks,
   deterministic, empty input → empty list).
 
-**How to frame the claim (from the first measurements, 2026-10-05).** Locality alone is not
-unique to CAAC: time-window and entropy chunking are also local, because their boundaries
-depend on time or content rather than on a count. Their cost is chunk size: on 10k entries they
-make 797 and 513 chunks (vs 149 for CAAC), so each edit costs more (825 and 530 hashes vs 188),
-and their sizes ignore the device's memory budget. The claim is therefore:
+**How to frame the claim (from the full benchmark, 2026-10-05; `docs/benchmarks/`).** At 100k
+entries, rebuilding after one **insertion** costs: CAAC 1,603 hashes; fixed-size 100,839 and
+the paper's sizing in a forest 100,783 (an insertion shifts every later boundary); the paper's
+global-tree pipeline 100,001; time-window 7,931 and entropy 5,196 (local, but 4–6× more and
+smaller chunks, so a bigger super-tree). After one **edit**, every forest with similar chunk
+sizes costs about the same (CAAC 1,491, fixed-size 1,624), against 100,000 for the paper's
+pipeline. Do **not** claim CAAC makes edits cheaper than fixed-size, or that it is the only
+local strategy. The claim is:
 
-> CAAC is the only strategy that keeps insertions and edits local **and** keeps chunk sizes at
-> the paper's memory-aware target, and with per-chunk trees it rebuilds an edit in ~2 % of the
-> work of the paper's pipeline.
+> CAAC is the only strategy that keeps insertions local **and** keeps chunk sizes at the
+> paper's memory-aware target: one insertion costs ~1.6k hashes at 100k entries, about 63× less
+> than count-based chunking or the paper's global tree, and 3–5× less than time-window or
+> entropy chunking.
 
 Why leaf hashes: they are already computed, uniformly distributed (SHA-256), and depend only
 on the entry itself (id, timestamp, level, source, message), so an insertion elsewhere does
@@ -148,7 +152,8 @@ All numbers come from the real engine. Sizes **1k, 5k, 10k, 50k, 100k**; **5 run
 
 | Metric | Shown as | Expected story |
 |---|---|---|
-| **Rebuild cost after one edit** (counted hash operations) | line/bar vs n, log scale | CAAC ≈ chunk + super-tree; paper pipeline ≈ 2n — **headline result** |
+| **Rebuild cost after one insertion** (hashes to rebuild only the changed chunks + super-tree) | line/bar vs n, log scale | CAAC ≈ 1.6k at 100k; fixed-size, resource-aware and paper pipeline ≈ 100k; time-window/entropy 5–8k — **headline result** |
+| Rebuild cost after one edit (counted hash operations) | line/bar vs n | every forest ≈ chunk + super-tree (~1.5k at 100k); paper pipeline = n |
 | **Chunk roots changed after one insertion** | bar per strategy | CAAC ≈ 1–2; fixed-size & resource-aware ≈ all later chunks |
 | Proof length (hashes) and size (bytes) | bar per strategy; compare to paper's 14 hashes @ 10k | similar O(log n) for all |
 | Verification time (µs) | bar/line | all O(log n); far below paper's 22 ms (Java vs Python — say so) |
@@ -241,7 +246,7 @@ misleading. Live benchmark runs are local-dev only.
 | Day | Work |
 |---|---|
 | 1 — engine ✅ (2026-10-05) | Fix `MerkleForest.withEntryReplaced` (rebuilt every chunk) to reuse untouched trees; add hash-operation counting in `Hashing` and assert counted work in tests; implement `ResourceAwareChunking`, `PaperPipeline`, `ContentAnchoredChunking`; register in the factory; tests incl. insertion locality |
-| 2 — benchmarks + backend | `BenchmarkRunner` → `docs/benchmarks/*.json`; Spring Boot upgrade; web/JPA/Flyway/Postgres deps; Flyway V1; local DB + user `merklelog` |
+| 2 — benchmarks + backend ✅ (2026-10-05) | `BenchmarkRunner` → `docs/benchmarks/*.json`; Spring Boot upgrade; web/JPA/Flyway/Postgres deps; Flyway V1; local DB + user `merklelog` |
 | 3 — API + frontend | REST endpoints (§5.1); scaffold `frontend/`; chunking strip + tree/proof views |
 | 4 — frontend | Tamper/insert view, results dashboard, anchor history |
 | 5 — ship | Render deployment; final README/architecture; end-review PPT from the real graphs; demo rehearsal |

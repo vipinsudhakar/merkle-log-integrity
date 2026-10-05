@@ -1,0 +1,24 @@
+# Committed defaults. Secrets never go here.
+#
+# Local development: put the database password in backend/config/application.yml (git-ignored).
+# Spring Boot loads ./config/application.yml automatically when started from backend/.
+# On Render: set DATABASE_URL, DATABASE_USERNAME and DATABASE_PASSWORD in the dashboard.
+
+spring:
+  application:
+    name: merkle-log-integrity
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/merklelog}
+    username: ${DATABASE_USERNAME:merklelog}
+    password: ${DATABASE_PASSWORD:}
+  jpa:
+    open-in-view: false
+    hibernate:
+      # Flyway owns the schema; Hibernate only checks that the entities match it.
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+server:
+  port: ${PORT:8080}

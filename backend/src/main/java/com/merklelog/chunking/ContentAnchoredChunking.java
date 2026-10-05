@@ -74,6 +74,22 @@ public final class ContentAnchoredChunking implements ChunkingStrategy {
     @Override
     public List<Chunk> chunk(List<LogEntry> entries) {
         Objects.requireNonNull(entries, "entries");
+        List<byte[]> leafHashes = new ArrayList<>(entries.size());
+        for (LogEntry entry : entries) {
+            leafHashes.add(entry.leafHash());
+        }
+        return chunk(entries, leafHashes);
+    }
+
+    /** Reuses leaf hashes the caller already computed; see {@link ChunkingStrategy#chunk(List, List)}. */
+    @Override
+    public List<Chunk> chunk(List<LogEntry> entries, List<byte[]> leafHashes) {
+        Objects.requireNonNull(entries, "entries");
+        Objects.requireNonNull(leafHashes, "leafHashes");
+        if (leafHashes.size() != entries.size()) {
+            throw new IllegalArgumentException(
+                    "Expected one leaf hash per entry: " + entries.size() + " entries, " + leafHashes.size() + " hashes");
+        }
 
         List<Chunk> chunks = new ArrayList<>();
         List<LogEntry> current = new ArrayList<>();
@@ -88,7 +104,7 @@ public final class ContentAnchoredChunking implements ChunkingStrategy {
             current.add(entry);
 
             boolean atCeiling = current.size() >= range.max();
-            boolean anchored = current.size() >= range.min() && isAnchor(entry.leafHash(), range.anchorMask());
+            boolean anchored = current.size() >= range.min() && isAnchor(leafHashes.get(position), range.anchorMask());
             if (atCeiling || anchored) {
                 chunks.add(new Chunk(chunks.size(), current, NAME));
                 current = new ArrayList<>();

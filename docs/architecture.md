@@ -39,6 +39,7 @@ ChunkingStrategy ──> Chunk ──> MerkleTree ─┴─> chunk root ──�
 |---|---|---|
 | `core` | `Hashing`, `LogEntry`, `MerkleTree`, `MerkleNode`, `MerkleProof`, `ProofStep`, `MerkleVerifier`, `MerkleForest`, `ForestProof`, `PaperPipeline` | `chunking` (for `Chunk`, `ChunkingStrategy`) |
 | `chunking` | `ChunkingStrategy` + five implementations (fixed-size, time-window, entropy, resource-aware, caac), `ResourceAwareSizer`, `MemoryPressureProfile`, factory | `core` (for `LogEntry`) |
+| `benchmark` | `BenchmarkRunner`, `Subject` (the 5 strategies + the paper's pipeline behind one interface), `Stats`, `Json` | `core`, `chunking`, `demo` |
 
 Neither package imports Spring. They are plain Java, unit-testable with no application
 context — which is what makes the DSA contribution legible as a standalone artifact.
@@ -251,7 +252,7 @@ changes tested behaviour.
 
 ## 11. Test coverage
 
-**334 tests, all passing.** `cd backend && mvn test`
+**346 tests, all passing.** `cd backend && mvn test`
 
 | Suite | Covers |
 |---|---|
@@ -267,6 +268,7 @@ changes tested behaviour.
 | `PaperPipelineTest` | The paper's Lemma 4 (root independent of batching), Algorithm 1 ingest cost, an edit costs a full rebuild (n hashes) |
 | `MerkleForestTest` | Two-stage proofs under every strategy; **counted** localised rebuild cost; all three degenerate cases |
 | `MerklePropertyTest` | Randomised sizes (fixed seed); **every single-bit flip** of every payload detected, 100% |
+| `BenchmarkRunnerTest` | The whole benchmark end to end on 2k entries: 2n − 1 ingest hashes per forest, the paper pipeline's n / n + 1 rebuild costs, CAAC insertion locality, perfect tamper detection |
 
 ---
 
@@ -301,7 +303,10 @@ whose leaf hash has its low `b = round(log2(T − T/4))` bits all zero; if none 
 cut at `2T`. Whether an entry is an anchor depends only on that entry, so an insertion or edit
 moves only nearby boundaries, and with one tree per chunk the rebuild stays O(c + k).
 
-First measurements at 10,000 entries: CAAC changes 1.2 chunk roots on average per insertion
-(worst 2) and rebuilds an edit in 188 hashes; fixed-size and the paper's sizing change ~75–83
-chunk roots; the paper's pipeline rebuilds in 10,000 hashes. Time-window and entropy are also
-local, but with 3–5× more, much smaller chunks, so each edit costs more (825 and 530 hashes).
+Full benchmark (docs/benchmarks/, 100,000 entries): rebuilding after one **insertion** costs CAAC
+1,603 hashes (1.2 chunk roots change), against ~100,800 for fixed-size and the paper's sizing
+(every later boundary shifts) and 100,001 for the paper's global tree; time-window and entropy
+are also local but cost 7,931 and 5,196 because their chunks are 4–6× smaller. An **edit** costs
+about the same in every forest with similar chunk sizes (~1,500) and 100,000 in the paper's
+pipeline. `MerkleForest.build` hashes each entry once and hands the leaf hashes to the strategy,
+so CAAC does not hash twice.

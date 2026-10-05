@@ -80,11 +80,33 @@ public final class MerkleForest {
         this.entryCount = entryCount;
     }
 
-    /** Chunks the entries with the given strategy and builds a tree over each. */
+    /**
+     * Chunks the entries with the given strategy and builds a tree over each.
+     *
+     * <p>Every entry is hashed exactly once: the leaf hashes are computed up front, handed to the
+     * strategy (so CAAC can find its anchors without hashing again), and then reused as the leaves
+     * of the chunk trees. Total cost is {@code n} leaf hashes plus the node hashes, the same for
+     * every strategy, which keeps ingest-cost comparisons fair.
+     */
     public static MerkleForest build(List<LogEntry> entries, ChunkingStrategy strategy) {
         Objects.requireNonNull(entries, "entries");
         Objects.requireNonNull(strategy, "strategy");
-        return fromChunks(strategy.chunk(entries), strategy.name());
+
+        List<byte[]> leafHashes = new ArrayList<>(entries.size());
+        for (LogEntry entry : entries) {
+            leafHashes.add(entry.leafHash());
+        }
+        List<Chunk> chunks = strategy.chunk(entries, leafHashes);
+
+        // Chunks partition the input in order (the ChunkingStrategy contract), so chunk i's leaf
+        // hashes are the next chunk.size() hashes in the list.
+        List<MerkleTree> trees = new ArrayList<>(chunks.size());
+        int offset = 0;
+        for (Chunk chunk : chunks) {
+            trees.add(MerkleTree.fromLeafHashes(leafHashes.subList(offset, offset + chunk.size())));
+            offset += chunk.size();
+        }
+        return fromTrees(chunks, trees, strategy.name());
     }
 
     /** Builds a forest over chunks that have already been produced. */

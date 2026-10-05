@@ -24,7 +24,7 @@ entropy, and the paper's own method (implemented faithfully). Always credit the 
 
 ## Stack
 
-- Backend: Java 21, Spring Boot 3.x (latest 3.x — upgrading from 3.3.5), Maven, JUnit 5 + AssertJ
+- Backend: Java 21, Spring Boot 3.5.16 (Flyway pinned to 11.20.3 for PostgreSQL 18), Maven, JUnit 5 + AssertJ
 - Frontend: React (Vite, TypeScript), Tailwind CSS, Recharts
 - DB: PostgreSQL 18 (Flyway migrations) — datasets/log entries + trusted root anchor history
 - Deploy: Render — backend web service (Docker) + static frontend + Postgres
@@ -106,6 +106,7 @@ Changing any of these changes tested behavior. Don't "fix" them silently.
 
 - `cd backend && mvn test`                                         — unit tests
 - `cd backend && mvn -q compile && java -cp target/classes com.merklelog.demo.DemoRunner` — console demo
-- `cd backend && mvn spring-boot:run`                              — API (day 2+)
+- `cd backend && java -cp target/classes com.merklelog.benchmark.BenchmarkRunner [--quick]` — benchmark → `docs/benchmarks/results.json|csv` (full run ≈ 6 min; don't run other heavy work at the same time, it skews timings)
+- `cd backend && mvn spring-boot:run`                              — API on :8080 (needs local Postgres; password in git-ignored `backend/config/application.yml`)
 - `cd frontend && npm run dev`                                     — frontend dev server (day 3+)
 - `POST /api/admin/seed`                                           — rebuild demo data from scratch

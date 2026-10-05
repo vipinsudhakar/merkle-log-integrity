@@ -34,6 +34,8 @@ pnpm-debug.log*
 .env
 .env.*
 !.env.example
+# Local Spring overrides (database password); loaded automatically from backend/config/.
+backend/config/
 
 # ---------- Logs ----------
 *.log

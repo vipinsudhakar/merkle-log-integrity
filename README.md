@@ -59,37 +59,48 @@ log can split differently on different runs.
 The base paper's method is implemented as faithfully as we can, not weakened, so the
 comparison is fair.
 
-## What we measure
+## Results
 
-At the paper's dataset sizes (1k, 5k, 10k, 50k and 100k entries), averaged over 5 runs:
+Full results: [`docs/benchmarks/`](docs/benchmarks/) (`results.json`, `results.csv`, and the
+method). Synthetic IoT logs at the paper's sizes (1k–100k entries); hash-operation counts are
+exact, timings are the mean of 5 runs. Tamper detection is 100 % precision and recall for every
+strategy at 1–50 % corruption, as in the paper's Table 6.
 
-- **Rebuild cost after an edit**, counted as hash operations
-- **Chunk roots changed after inserting one entry** (edit locality)
-- Proof length and size, compared with the paper's 14-hash proofs at 10k entries
-- Verification time, ingestion throughput, peak memory
-- Chunk-size distribution, and how chunk sizes react to a simulated memory-pressure profile
-- Tamper detection precision, recall and F1 at 1–50 % corruption
+**100,000 entries:**
 
-Caveats we state up front: our engine is Java and the paper's is Python, so absolute timings
-are not directly comparable. The paper reports proof sizes using hex-encoded hashes, so we
-compare hash counts rather than bytes.
+| Subject | Chunks | Chunk roots changed by one insertion | Hashes to rebuild after an **insertion** | Hashes to rebuild after an **edit** | Proof length (hashes) |
+|---|---|---|---|---|---|
+| Fixed-size | 1,563 | 782 | 100,839 | 1,624 | 16.9 |
+| Time-window | 7,886 | 1.0 | 7,931 | 7,909 | 17.3 |
+| Entropy | 5,129 | 1.7 | 5,196 | 5,149 | 17.4 |
+| Resource-aware (paper's sizing, in our forest) | 1,429 | 715 | 100,783 | 1,497 | 17.4 |
+| **CAAC (ours)** | **1,397** | **1.2** | **1,603** | **1,491** | **17.4** |
+| Base paper's pipeline (one global tree) | 1 | — | 100,001 | 100,000 | 16.9 |
 
-### First results (10,000 entries, one run)
+What this shows:
 
-| Strategy | Chunks | Chunk roots changed by one insertion (avg / worst of 20) | Hash operations to rebuild after one edit |
-|---|---|---|---|
-| Fixed-size | 157 | 82.7 / 157 | 220 |
-| Time-window | 797 | 1.0 / 1 | 825 |
-| Entropy | 513 | 1.2 / 3 | 530 |
-| Resource-aware (paper's sizing, in our forest) | 143 | 75.1 / 143 | 212 |
-| **CAAC** | **149** | **1.2 / 2** | **188** |
-| Base paper's pipeline (one global tree) | — | — | 10,000 |
+- **Insertion is where CAAC wins.** Count-based cutting (fixed-size, and the paper's sizing)
+  shifts every boundary after an inserted entry, so about half of all chunks must be rebuilt
+  (~100k hashes). The paper's single global tree must be rebuilt in full (100k). CAAC rebuilds
+  about one chunk plus the super-tree: **1,603 hashes, ~63× less**.
+- **Time-window and entropy are local too,** but they make 4–6× more, much smaller chunks, so
+  every rebuild pays for a bigger super-tree: 3–5× CAAC's cost. They also ignore the device's
+  memory budget.
+- **Edits cost the same for every forest at similar chunk sizes** (~1,500 hashes for CAAC,
+  fixed-size and resource-aware), and ~67× less than the paper's full rebuild.
+- **Proofs stay O(log n)** for everyone: ~17 hashes at 100k. The global tree is 14 hashes at
+  10k, matching the paper's 14.
+- **CAAC still adapts to memory pressure** like the paper's method: under the paper's stress
+  profile its chunks shrink from ~70 to ~8 entries and recover afterwards.
 
-Count-based strategies (fixed-size, and the paper's sizing) shift every later boundary on an
-insertion. Time-window and entropy stay local too, but produce 3–5× more, much smaller chunks,
-which makes each edit cost more. CAAC is the only one that keeps changes local **and** keeps
-chunk sizes at the paper's memory-aware target. Full multi-run benchmarks are next.
+So CAAC is the only strategy that keeps insertions local **and** keeps chunk sizes at the
+paper's memory-aware target.
 
+Caveats: our engine is Java and the paper's is Python, so absolute timings are not comparable.
+The paper reports proof sizes with hex-encoded hashes, so we compare hash counts, not bytes. The
+paper's pipeline rebuilds its tree after every 70-entry batch (Algorithm 1 as published), which
+makes its ingest slow at large n; bigger batches would help its ingest, but not its edit or
+insertion cost.
 ## Visualiser (coming next)
 
 A React app backed by a Spring Boot API that runs the real engine:
@@ -115,10 +126,11 @@ Requires Java 21 and Maven.
 
 ```bash
 cd backend
-mvn test                                                    # 334 unit tests
+mvn test                                                    # 346 unit tests
 mvn -q compile
 java -cp target/classes com.merklelog.demo.DemoRunner       # console demo, 512 entries
 java -cp target/classes com.merklelog.demo.DemoRunner 2048  # any size
+java -cp target/classes com.merklelog.benchmark.BenchmarkRunner   # benchmark, ~6 min
 ```
 
 The console demo walks through the hash primitives, building the forest, an inclusion proof
@@ -135,8 +147,8 @@ next.
   forest, console demo
 - ✅ **Strategies**: all five, including CAAC and the base paper's method, plus the paper's
   global-tree pipeline; localised rebuild with counted hash operations. 334 tests, all passing.
-- ⏳ **Benchmarks**: all five strategies at the paper's sizes, 5 runs each
-- ⏳ **API and database**: Spring Boot REST API, PostgreSQL
+- ✅ **Benchmarks**: five strategies + the paper's pipeline at the paper's sizes, 5 runs each
+- ⏳ **API and database**: Spring Boot 3.5 + PostgreSQL 18 schema (Flyway) in place; REST endpoints next
 - ⏳ **Visualiser**: the four views above
 - ⏳ **Deployment** on Render
 
