@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Objects;
+import java.util.concurrent.atomic.LongAdder;
 
 /**
  * The single entry point for every hash this project computes.
@@ -35,6 +36,18 @@ import java.util.Objects;
  * instance is obtained per call rather than cached in a field. This costs a little
  * allocation but keeps every method here safe to call concurrently, which matters once
  * the benchmark harness in Phase 7 runs parallel workloads.
+ *
+ * <h2>Counting hash operations</h2>
+ *
+ * <p>Every {@link #leafHash} and {@link #nodeHash} call increments a global counter, read with
+ * {@link #operationCount()}. Rebuild cost is one of the headline metrics of this project, and a
+ * reported figure ("64 entries re-hashed") is only a claim; a counted figure is evidence. Tests
+ * and the benchmark read the counter before and after an operation and take the difference, so
+ * the number they report is the number of SHA-256 computations that actually ran.
+ *
+ * <p>The counter only observes; it never changes a result. It is a {@link LongAdder} so that
+ * concurrent callers stay correct, but a before/after difference is only meaningful when nothing
+ * else hashes at the same time, which is how the tests and the benchmark use it.
  */
 public final class Hashing {
 
@@ -49,6 +62,9 @@ public final class Hashing {
 
     private static final String ALGORITHM = "SHA-256";
     private static final char[] HEX_DIGITS = "0123456789abcdef".toCharArray();
+
+    /** Leaf and node hashes computed since the JVM started. See the class note on counting. */
+    private static final LongAdder OPERATIONS = new LongAdder();
 
     private Hashing() {
         // Static utility class; never instantiated.
@@ -77,6 +93,7 @@ public final class Hashing {
         MessageDigest digest = newDigest();
         digest.update(LEAF_PREFIX);
         digest.update(data);
+        OPERATIONS.increment();
         return digest.digest();
     }
 
@@ -97,7 +114,24 @@ public final class Hashing {
         digest.update(NODE_PREFIX);
         digest.update(left);
         digest.update(right);
+        OPERATIONS.increment();
         return digest.digest();
+    }
+
+    /**
+     * Total leaf and node hashes computed so far in this JVM.
+     *
+     * <p>Take the difference between two readings to measure one operation:
+     * <pre>
+     *   long before = Hashing.operationCount();
+     *   forest.withEntryReplaced(i, entry);
+     *   long cost = Hashing.operationCount() - before;
+     * </pre>
+     * Raw {@link #sha256} calls (only the empty-tree sentinel) are not counted: they are not part
+     * of building or verifying a tree.
+     */
+    public static long operationCount() {
+        return OPERATIONS.sum();
     }
 
     /**

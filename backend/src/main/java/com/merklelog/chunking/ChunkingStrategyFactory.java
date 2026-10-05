@@ -24,7 +24,8 @@ public final class ChunkingStrategyFactory {
 
     /** Every strategy name this factory understands, in the order the UI should present them. */
     public static List<String> availableStrategies() {
-        return List.of(FixedSizeChunking.NAME, TimeWindowChunking.NAME, EntropyChunking.NAME);
+        return List.of(FixedSizeChunking.NAME, TimeWindowChunking.NAME, EntropyChunking.NAME,
+                ResourceAwareChunking.NAME, ContentAnchoredChunking.NAME);
     }
 
     /** Creates a strategy with the project default parameters. */
@@ -46,6 +47,10 @@ public final class ChunkingStrategyFactory {
      *   <tr><td>time-window</td> <td>{@code windowSeconds}</td></tr>
      *   <tr><td>entropy</td>     <td>{@code windowBytes}, {@code thresholdBits},
      *                                {@code minChunkEntries}, {@code maxChunkEntries}</td></tr>
+     *   <tr><td>resource-aware, caac</td>
+     *       <td>{@code totalMemory}, {@code targetUtilisation}, {@code scalingK},
+     *           {@code minChunk}, {@code maxChunk}, {@code pressureProfile} (comma-separated,
+     *           e.g. {@code 0.25,0.85,0.25}), {@code pressureWindow}</td></tr>
      * </table>
      *
      * @throws IllegalArgumentException if the name is unknown or a recognised value is malformed
@@ -67,6 +72,10 @@ public final class ChunkingStrategyFactory {
                     intParam(parameters, "minChunkEntries", EntropyChunking.DEFAULT_MIN_CHUNK_ENTRIES),
                     intParam(parameters, "maxChunkEntries", EntropyChunking.DEFAULT_MAX_CHUNK_ENTRIES));
 
+            case ResourceAwareChunking.NAME -> new ResourceAwareChunking(sizer(parameters), profile(parameters));
+
+            case ContentAnchoredChunking.NAME -> new ContentAnchoredChunking(sizer(parameters), profile(parameters));
+
             default -> throw new IllegalArgumentException(
                     "Unknown chunking strategy '" + name + "'. Available: " + availableStrategies());
         };
@@ -75,6 +84,24 @@ public final class ChunkingStrategyFactory {
     /** All three strategies with default parameters — what the Phase 6 comparison page runs. */
     public static List<ChunkingStrategy> allWithDefaults() {
         return availableStrategies().stream().map(ChunkingStrategyFactory::create).toList();
+    }
+
+    /** The paper's Eq. 1–2 sizer, shared by resource-aware and caac so both use one rule. */
+    private static ResourceAwareSizer sizer(Map<String, String> parameters) {
+        return new ResourceAwareSizer(
+                doubleParam(parameters, "totalMemory", ResourceAwareSizer.DEFAULT_TOTAL_MEMORY),
+                doubleParam(parameters, "targetUtilisation", ResourceAwareSizer.DEFAULT_TARGET_UTILISATION),
+                doubleParam(parameters, "scalingK", ResourceAwareSizer.DEFAULT_SCALING_K),
+                intParam(parameters, "minChunk", ResourceAwareSizer.DEFAULT_MIN_CHUNK),
+                intParam(parameters, "maxChunk", ResourceAwareSizer.DEFAULT_MAX_CHUNK));
+    }
+
+    private static MemoryPressureProfile profile(Map<String, String> parameters) {
+        String values = parameters.get("pressureProfile");
+        int window = intParam(parameters, "pressureWindow", MemoryPressureProfile.PAPER_WINDOW_ENTRIES);
+        return values == null
+                ? new MemoryPressureProfile(MemoryPressureProfile.baseline().pressures(), window)
+                : MemoryPressureProfile.parse(values, window);
     }
 
     private static int intParam(Map<String, String> parameters, String key, int fallback) {

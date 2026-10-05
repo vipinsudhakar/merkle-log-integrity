@@ -215,6 +215,43 @@ class HashingTest {
         }
     }
 
+    @Nested
+    @DisplayName("operation counting — what rebuild-cost numbers are measured with")
+    class OperationCounting {
+
+        @Test
+        @DisplayName("each leaf and node hash adds exactly one to the counter")
+        void countsLeafAndNodeHashes() {
+            long before = Hashing.operationCount();
+
+            byte[] a = Hashing.leafHash(Hashing.utf8("a"));
+            byte[] b = Hashing.leafHash(Hashing.utf8("b"));
+            Hashing.nodeHash(a, b);
+
+            assertThat(Hashing.operationCount() - before).isEqualTo(3);
+        }
+
+        @Test
+        @DisplayName("building a tree of n leaves costs n leaf hashes plus n - 1 node hashes")
+        void treeBuildCostIsCounted() {
+            // n - 1 holds for any n under promotion: every node hash merges two nodes into one,
+            // and a promoted node costs nothing.
+            long before = Hashing.operationCount();
+            MerkleTree.fromEntries(MerkleTreeTest.entries(37));
+
+            assertThat(Hashing.operationCount() - before).isEqualTo(37 + 36);
+        }
+
+        @Test
+        @DisplayName("the raw sha256 used for the empty-tree sentinel is not counted")
+        void rawSha256IsNotCounted() {
+            long before = Hashing.operationCount();
+            Hashing.emptyTreeHash();
+
+            assertThat(Hashing.operationCount()).isEqualTo(before);
+        }
+    }
+
     // --- helpers -----------------------------------------------------------------------
 
     /** Digests with a raw MessageDigest, independent of {@link Hashing}'s own plumbing. */

@@ -93,17 +93,27 @@ public final class MerkleForest {
         Objects.requireNonNull(strategyName, "strategyName");
 
         List<MerkleTree> trees = new ArrayList<>(chunks.size());
+        for (Chunk chunk : chunks) {
+            trees.add(MerkleTree.fromEntries(chunk.entries()));
+        }
+        return fromTrees(chunks, trees, strategyName);
+    }
+
+    /**
+     * Assembles a forest from chunks whose trees are already built, hashing only the super-tree.
+     *
+     * <p>This is what makes a localised rebuild possible: {@link #withEntryReplaced} passes in
+     * every untouched chunk tree as-is, so none of them is re-hashed.
+     */
+    private static MerkleForest fromTrees(List<Chunk> chunks, List<MerkleTree> trees, String strategyName) {
         List<byte[]> chunkRoots = new ArrayList<>(chunks.size());
         int[] offsets = new int[chunks.size()];
         int runningOffset = 0;
 
         for (int i = 0; i < chunks.size(); i++) {
-            Chunk chunk = chunks.get(i);
-            MerkleTree tree = MerkleTree.fromEntries(chunk.entries());
-            trees.add(tree);
-            chunkRoots.add(tree.root());
+            chunkRoots.add(trees.get(i).root());
             offsets[i] = runningOffset;
-            runningOffset += chunk.size();
+            runningOffset += chunks.get(i).size();
         }
 
         // The super-tree's leaves are chunk roots, fed in as pre-computed hashes. They are
@@ -112,7 +122,7 @@ public final class MerkleForest {
         // single-leaf tree whose root is that chunk's root, which is the documented behaviour.
         MerkleTree superTree = MerkleTree.fromLeafHashes(chunkRoots);
 
-        return new MerkleForest(List.copyOf(chunks), Collections.unmodifiableList(trees),
+        return new MerkleForest(List.copyOf(chunks), Collections.unmodifiableList(new ArrayList<>(trees)),
                 superTree, strategyName, offsets, runningOffset);
     }
 
@@ -231,11 +241,18 @@ public final class MerkleForest {
     /**
      * Returns a new forest with one entry replaced, rebuilding only what actually changed.
      *
-     * <p>This is the localised-rebuild claim made concrete. Only the affected chunk's tree is
-     * rebuilt, plus the super-tree over the chunk roots. Chunk boundaries are kept as they
-     * were, deliberately: re-running the chunking strategy could move every boundary and turn
-     * a one-entry edit into a full rebuild, which would defeat the point of measuring rebuild
-     * cost per strategy.
+     * <p>This is the localised-rebuild claim made concrete. Every other chunk's tree is reused
+     * exactly as it is. In the affected chunk only the changed entry's leaf is re-hashed (the
+     * other leaf hashes are carried over), then that chunk's internal nodes are rebuilt, then
+     * the super-tree over the chunk roots. Cost: {@code 1 + (c - 1) + (k - 1)} hashes for a
+     * chunk of {@code c} entries in a forest of {@code k} chunks, i.e. O(c + k), not O(n).
+     *
+     * <p>Chunk boundaries are kept as they were, deliberately: re-running the chunking strategy
+     * could move every boundary and turn a one-entry edit into a full rebuild, which would defeat
+     * the point of measuring rebuild cost per strategy.
+     *
+     * <p>The cost reported in {@link RebuildResult#hashOperations()} is counted, not computed:
+     * it is the number of SHA-256 operations that actually ran (see {@link Hashing#operationCount()}).
      *
      * @return the new forest and a record of how much work the rebuild cost
      */
@@ -245,21 +262,31 @@ public final class MerkleForest {
             throw new EmptyForestException("Cannot replace entry " + globalIndex + ": the forest is empty");
         }
         requireEntryIndex(globalIndex);
+        long hashesBefore = Hashing.operationCount();
 
         int chunkIndex = chunkIndexOf(globalIndex);
         int localIndex = globalIndex - chunkStartOffsets[chunkIndex];
+        Chunk oldChunk = chunks.get(chunkIndex);
+        MerkleTree oldTree = chunkTrees.get(chunkIndex);
 
-        List<LogEntry> revisedEntries = new ArrayList<>(chunks.get(chunkIndex).entries());
+        List<LogEntry> revisedEntries = new ArrayList<>(oldChunk.entries());
         revisedEntries.set(localIndex, replacement);
 
+        // Reuse the chunk's existing leaf hashes; only the replaced entry needs a new one.
+        List<byte[]> leafHashes = new ArrayList<>(oldTree.leafCount());
+        for (int i = 0; i < oldTree.leafCount(); i++) {
+            leafHashes.add(i == localIndex ? replacement.leafHash() : oldTree.leafHash(i));
+        }
+
         List<Chunk> revisedChunks = new ArrayList<>(chunks);
-        revisedChunks.set(chunkIndex, new Chunk(chunkIndex, revisedEntries, chunks.get(chunkIndex).strategyName()));
+        revisedChunks.set(chunkIndex, new Chunk(chunkIndex, revisedEntries, oldChunk.strategyName()));
+        List<MerkleTree> revisedTrees = new ArrayList<>(chunkTrees);
+        revisedTrees.set(chunkIndex, MerkleTree.fromLeafHashes(leafHashes));
 
-        MerkleForest rebuilt = fromChunks(revisedChunks, strategyName);
+        MerkleForest rebuilt = fromTrees(revisedChunks, revisedTrees, strategyName);
+        long hashOperations = Hashing.operationCount() - hashesBefore;
 
-        // Entries re-hashed = the affected chunk only. Compare with entryCount(), which is
-        // what a single global tree would have cost.
-        return new RebuildResult(rebuilt, chunkIndex, revisedEntries.size(), entryCount);
+        return new RebuildResult(rebuilt, chunkIndex, revisedEntries.size(), entryCount, hashOperations);
     }
 
     /**
@@ -267,11 +294,12 @@ public final class MerkleForest {
      *
      * @param forest             the rebuilt forest
      * @param rebuiltChunkIndex  which chunk had to be rebuilt
-     * @param entriesRehashed    entries re-hashed — the size of that one chunk
-     * @param entriesInDataset   total entries, i.e. what a single global tree would have cost
+     * @param entriesRehashed    entries in that one chunk, i.e. the size of the rebuilt tree
+     * @param entriesInDataset   total entries, i.e. what a single global tree would have covered
+     * @param hashOperations     SHA-256 operations the rebuild actually performed (counted)
      */
     public record RebuildResult(MerkleForest forest, int rebuiltChunkIndex,
-                                int entriesRehashed, int entriesInDataset) {
+                                int entriesRehashed, int entriesInDataset, long hashOperations) {
 
         /** How many times cheaper the localised rebuild was than re-hashing everything. */
         public double savingFactor() {

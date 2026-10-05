@@ -53,8 +53,8 @@ log can split differently on different runs.
 | Fixed-size | every N entries | ✅ done |
 | Time-window | an entry falls outside the current time window | ✅ done |
 | Entropy | the rolling Shannon entropy of recent payload bytes crosses a threshold | ✅ done |
-| Resource-aware (base paper) | batch size from memory pressure (Eq. 1–2), one global tree rebuilt per batch | ⏳ in progress |
-| **CAAC (ours)** | content-anchored cut inside the memory-aware size range, one tree per chunk | ⏳ in progress |
+| Resource-aware (base paper) | batch size from memory pressure (Eq. 1–2), one global tree rebuilt per batch | ✅ done |
+| **CAAC (ours)** | content-anchored cut inside the memory-aware size range, one tree per chunk | ✅ done |
 
 The base paper's method is implemented as faithfully as we can, not weakened, so the
 comparison is fair.
@@ -74,7 +74,23 @@ Caveats we state up front: our engine is Java and the paper's is Python, so abso
 are not directly comparable. The paper reports proof sizes using hex-encoded hashes, so we
 compare hash counts rather than bytes.
 
-## Visualiser (in progress)
+### First results (10,000 entries, one run)
+
+| Strategy | Chunks | Chunk roots changed by one insertion (avg / worst of 20) | Hash operations to rebuild after one edit |
+|---|---|---|---|
+| Fixed-size | 157 | 82.7 / 157 | 220 |
+| Time-window | 797 | 1.0 / 1 | 825 |
+| Entropy | 513 | 1.2 / 3 | 530 |
+| Resource-aware (paper's sizing, in our forest) | 143 | 75.1 / 143 | 212 |
+| **CAAC** | **149** | **1.2 / 2** | **188** |
+| Base paper's pipeline (one global tree) | — | — | 10,000 |
+
+Count-based strategies (fixed-size, and the paper's sizing) shift every later boundary on an
+insertion. Time-window and entropy stay local too, but produce 3–5× more, much smaller chunks,
+which makes each edit cost more. CAAC is the only one that keeps changes local **and** keeps
+chunk sizes at the paper's memory-aware target. Full multi-run benchmarks are next.
+
+## Visualiser (coming next)
 
 A React app backed by a Spring Boot API that runs the real engine:
 
@@ -99,7 +115,7 @@ Requires Java 21 and Maven.
 
 ```bash
 cd backend
-mvn test                                                    # 260 unit tests
+mvn test                                                    # 334 unit tests
 mvn -q compile
 java -cp target/classes com.merklelog.demo.DemoRunner       # console demo, 512 entries
 java -cp target/classes com.merklelog.demo.DemoRunner 2048  # any size
@@ -116,10 +132,10 @@ next.
 ## Status
 
 - ✅ **Core engine**: RFC 6962 hashing, Merkle trees, inclusion proofs, verifier, per-chunk
-  forest, three classic chunking strategies, console demo. 260 tests, all passing.
-- ⏳ **Engine, part 2**: CAAC, the base paper's method, localised-rebuild fix with counted
-  hash operations
-- ⏳ **Benchmarks**: all five strategies at the paper's sizes
+  forest, console demo
+- ✅ **Strategies**: all five, including CAAC and the base paper's method, plus the paper's
+  global-tree pipeline; localised rebuild with counted hash operations. 334 tests, all passing.
+- ⏳ **Benchmarks**: all five strategies at the paper's sizes, 5 runs each
 - ⏳ **API and database**: Spring Boot REST API, PostgreSQL
 - ⏳ **Visualiser**: the four views above
 - ⏳ **Deployment** on Render

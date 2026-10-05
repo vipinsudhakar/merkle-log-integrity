@@ -18,6 +18,32 @@ class ChunkingStrategyFactoryTest {
         assertThat(ChunkingStrategyFactory.create("fixed-size")).isInstanceOf(FixedSizeChunking.class);
         assertThat(ChunkingStrategyFactory.create("time-window")).isInstanceOf(TimeWindowChunking.class);
         assertThat(ChunkingStrategyFactory.create("entropy")).isInstanceOf(EntropyChunking.class);
+        assertThat(ChunkingStrategyFactory.create("resource-aware")).isInstanceOf(ResourceAwareChunking.class);
+        assertThat(ChunkingStrategyFactory.create("caac")).isInstanceOf(ContentAnchoredChunking.class);
+    }
+
+    @Test
+    @DisplayName("resource-aware and caac take the paper's sizing parameters and a pressure profile")
+    void appliesSizingAndProfileParameters() {
+        Map<String, String> parameters = Map.of(
+                "totalMemory", "2048", "scalingK", "8", "minChunk", "4", "maxChunk", "100",
+                "pressureProfile", "0.25, 0.85", "pressureWindow", "500");
+
+        ContentAnchoredChunking caac = (ContentAnchoredChunking) ChunkingStrategyFactory.create("caac", parameters);
+        assertThat(caac.sizer().minChunk()).isEqualTo(4);
+        assertThat(caac.sizer().maxChunk()).isEqualTo(100);
+        assertThat(caac.profile().pressures()).containsExactly(0.25, 0.85);
+        assertThat(caac.profile().windowEntries()).isEqualTo(500);
+
+        ResourceAwareChunking paper = (ResourceAwareChunking) ChunkingStrategyFactory.create("resource-aware", parameters);
+        assertThat(paper.parameters())
+                .containsEntry("totalMemory", "2048.0")
+                .containsEntry("pressureProfile", "0.25,0.85")
+                .containsEntry("pressureWindow", "500");
+
+        assertThatThrownBy(() -> ChunkingStrategyFactory.create("caac", Map.of("pressureProfile", "0.2,high")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("high");
     }
 
     @Test
@@ -82,13 +108,13 @@ class ChunkingStrategyFactoryTest {
     }
 
     @Test
-    @DisplayName("availableStrategies lists exactly the three implemented strategies")
+    @DisplayName("availableStrategies lists exactly the five implemented strategies")
     void listsAvailableStrategies() {
         assertThat(ChunkingStrategyFactory.availableStrategies())
-                .containsExactly("fixed-size", "time-window", "entropy");
+                .containsExactly("fixed-size", "time-window", "entropy", "resource-aware", "caac");
 
         assertThat(ChunkingStrategyFactory.allWithDefaults())
-                .hasSize(3)
+                .hasSize(5)
                 .extracting(ChunkingStrategy::name)
                 .containsExactlyElementsOf(ChunkingStrategyFactory.availableStrategies());
     }

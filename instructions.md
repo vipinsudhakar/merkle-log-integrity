@@ -74,8 +74,12 @@ Code: github.com/anilyagiz/iot-tamper-evident-log-integrity (Python).
 | `fixed-size` | every N entries | per-chunk forest | done (Phase 1) |
 | `time-window` | entry falls outside `[start, start+window)` | per-chunk forest | done |
 | `entropy` | rolling Shannon entropy ≥ threshold (min/max guarded) | per-chunk forest | done |
-| `resource-aware` | **paper's method**: count from Eq. 1–2 under a pressure profile | paper's pipeline: one global tree, rebuilt per batch | day 1 |
-| `caac` | **ours**: content-anchored cut inside an Eq. 1–2 size range | per-chunk forest | day 1 |
+| `resource-aware` | **paper's method**: count from Eq. 1–2 under a pressure profile | paper's pipeline: one global tree, rebuilt per batch | done (day 1) |
+| `caac` | **ours**: content-anchored cut inside an Eq. 1–2 size range | per-chunk forest | done (day 1) |
+
+Implemented defaults: `M_total = 1024`, `M_target = 0.5`, `K = 6`, `C_min = 8`, `C_max = 256`,
+so the paper's baseline pressure 0.25 gives T = 70 entries and its stress pressure 0.85 gives
+T = 9. CAAC at T = 70: min 17, max 140, anchor mask 63 (expected ≈ 81 entries per chunk).
 
 ### 3.1 Paper baseline (implement faithfully — do not weaken it)
 
@@ -116,6 +120,16 @@ Properties to prove by tests and benchmarks:
   Fig. 4.
 - **Satisfies the chunking contract** in `ChunkingInvariantTest` (partition, no empty chunks,
   deterministic, empty input → empty list).
+
+**How to frame the claim (from the first measurements, 2026-10-05).** Locality alone is not
+unique to CAAC: time-window and entropy chunking are also local, because their boundaries
+depend on time or content rather than on a count. Their cost is chunk size: on 10k entries they
+make 797 and 513 chunks (vs 149 for CAAC), so each edit costs more (825 and 530 hashes vs 188),
+and their sizes ignore the device's memory budget. The claim is therefore:
+
+> CAAC is the only strategy that keeps insertions and edits local **and** keeps chunk sizes at
+> the paper's memory-aware target, and with per-chunk trees it rebuilds an edit in ~2 % of the
+> work of the paper's pipeline.
 
 Why leaf hashes: they are already computed, uniformly distributed (SHA-256), and depend only
 on the entry itself (id, timestamp, level, source, message), so an insertion elsewhere does
@@ -226,7 +240,7 @@ misleading. Live benchmark runs are local-dev only.
 
 | Day | Work |
 |---|---|
-| 1 — engine | Fix `MerkleForest.withEntryReplaced` (currently rebuilds every chunk) to reuse untouched trees; add hash-operation counting in `Hashing` and assert counted work in tests; implement `ResourceAwareChunking`, `PaperPipeline`, `ContentAnchoredChunking`; register in the factory; tests incl. insertion locality |
+| 1 — engine ✅ (2026-10-05) | Fix `MerkleForest.withEntryReplaced` (rebuilt every chunk) to reuse untouched trees; add hash-operation counting in `Hashing` and assert counted work in tests; implement `ResourceAwareChunking`, `PaperPipeline`, `ContentAnchoredChunking`; register in the factory; tests incl. insertion locality |
 | 2 — benchmarks + backend | `BenchmarkRunner` → `docs/benchmarks/*.json`; Spring Boot upgrade; web/JPA/Flyway/Postgres deps; Flyway V1; local DB + user `merklelog` |
 | 3 — API + frontend | REST endpoints (§5.1); scaffold `frontend/`; chunking strip + tree/proof views |
 | 4 — frontend | Tamper/insert view, results dashboard, anchor history |

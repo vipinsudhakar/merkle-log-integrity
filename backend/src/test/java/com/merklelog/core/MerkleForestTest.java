@@ -192,6 +192,44 @@ class MerkleForestTest {
         }
 
         @Test
+        @DisplayName("the counted work is one leaf + one chunk's nodes + the super-tree, not the dataset")
+        void countedRebuildWorkIsLocal() {
+            // The reported numbers above are claims; this checks the SHA-256 operations that
+            // actually ran. 10,000 entries in chunks of 64 = 157 chunks (the last holds 16).
+            MerkleForest forest = MerkleForest.build(entries(10_000), new FixedSizeChunking(64));
+            int chunkSize = 64;
+            int chunkCount = forest.chunkCount();
+
+            MerkleForest.RebuildResult result =
+                    forest.withEntryReplaced(5_000, entries(1).get(0).withMessage("replacement"));
+
+            // 1 new leaf hash, chunkSize - 1 node hashes in that chunk, chunkCount - 1 in the super-tree.
+            long expected = 1 + (chunkSize - 1) + (chunkCount - 1);
+            assertThat(result.hashOperations()).isEqualTo(expected);
+            assertThat(result.hashOperations()).isLessThan(10_000 / 20);
+
+            // And the localised result is identical to building the edited dataset from scratch.
+            List<LogEntry> edited = new ArrayList<>(entries(10_000));
+            edited.set(5_000, entries(1).get(0).withMessage("replacement"));
+            assertThat(result.forest().superRoot())
+                    .isEqualTo(MerkleForest.build(edited, new FixedSizeChunking(64)).superRoot());
+        }
+
+        @Test
+        @DisplayName("a localised edit costs a small fraction of building the forest")
+        void fullBuildCostsMoreThanLocalisedEdit() {
+            List<LogEntry> input = entries(4_096);
+            long before = Hashing.operationCount();
+            MerkleForest forest = MerkleForest.build(input, new FixedSizeChunking(64));
+            long fullBuild = Hashing.operationCount() - before;
+
+            long edit = forest.withEntryReplaced(100, input.get(100).withMessage("x")).hashOperations();
+
+            assertThat(fullBuild).isEqualTo(4_096 + (4_096 - 64) + (64 - 1));
+            assertThat(edit).isEqualTo(1 + 63 + 63);
+        }
+
+        @Test
         @DisplayName("chunks other than the rebuilt one keep their exact roots")
         void untouchedChunksKeepTheirRoots() {
             MerkleForest forest = MerkleForest.build(entries(500), new FixedSizeChunking(50));

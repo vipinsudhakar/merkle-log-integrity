@@ -3,6 +3,7 @@ package com.merklelog.demo;
 import com.merklelog.chunking.Chunk;
 import com.merklelog.chunking.ChunkingStrategy;
 import com.merklelog.chunking.ChunkingStrategyFactory;
+import com.merklelog.chunking.ResourceAwareChunking;
 import com.merklelog.core.EmptyForestException;
 import com.merklelog.core.ForestProof;
 import com.merklelog.core.Hashing;
@@ -11,6 +12,7 @@ import com.merklelog.core.MerkleForest;
 import com.merklelog.core.MerkleProof;
 import com.merklelog.core.MerkleTree;
 import com.merklelog.core.MerkleVerifier;
+import com.merklelog.core.PaperPipeline;
 
 import java.util.List;
 
@@ -65,7 +67,7 @@ public final class DemoRunner {
     private static void banner() {
         rule('=');
         System.out.println("  MERKLE-TREE TAMPER-EVIDENT LOG INTEGRITY  -  core engine demo");
-        System.out.println("  Phase 1 (core DSA) complete - console demo pending the React front end");
+        System.out.println("  Content-Anchored Adaptive Chunking (CAAC) - console demo of the engine");
         rule('=');
     }
 
@@ -227,21 +229,25 @@ public final class DemoRunner {
         System.out.println("  When an entry changes, only its own chunk's tree is rebuilt, plus the");
         System.out.println("  small super-tree over the chunk roots. Every other chunk is untouched.");
         System.out.println();
-        System.out.printf("    chunk rebuilt              : %d%n", result.rebuiltChunkIndex());
-        System.out.printf("    entries re-hashed          : %d%n", result.entriesRehashed());
-        System.out.printf("    entries in the dataset     : %d%n", result.entriesInDataset());
-        System.out.printf("    saving vs one global tree  : %.1fx cheaper%n", result.savingFactor());
+        System.out.printf("    chunk rebuilt               : %d%n", result.rebuiltChunkIndex());
+        System.out.printf("    entries in that chunk       : %d%n", result.entriesRehashed());
+        System.out.printf("    entries in the dataset      : %d%n", result.entriesInDataset());
+        System.out.printf("    SHA-256 operations (counted): %d%n", result.hashOperations());
+        System.out.printf("    base paper's pipeline       : %d  (one global tree, full rebuild)%n",
+                PaperPipeline.ingest(forest.chunks().stream().flatMap(c -> c.entries().stream()).toList(),
+                                new ResourceAwareChunking())
+                        .withEntryReplaced(target, replacement).hashOperations());
         System.out.println();
-        System.out.println("  This is exactly why chunking strategy matters, and what Phase 7 measures:");
+        System.out.println("  This is why chunking strategy matters, and what the benchmark measures:");
         System.out.println("  smaller chunks rebuild faster but make proofs longer, and vice versa.");
     }
 
     private static void section7StrategyComparison(List<LogEntry> entries) {
         heading("7", "CHUNKING STRATEGY COMPARISON  (the contribution over the base paper)");
 
-        System.out.printf("  %-12s %-8s %-10s %-11s %-13s %s%n",
+        System.out.printf("  %-15s %-8s %-10s %-11s %-13s %s%n",
                 "strategy", "chunks", "avg size", "avg steps", "proof bytes", "rebuild cost");
-        System.out.printf("  %-12s %-8s %-10s %-11s %-13s %s%n",
+        System.out.printf("  %-15s %-8s %-10s %-11s %-13s %s%n",
                 "--------", "------", "--------", "---------", "-----------", "------------");
 
         for (ChunkingStrategy strategy : ChunkingStrategyFactory.allWithDefaults()) {
@@ -260,7 +266,7 @@ public final class DemoRunner {
             }
             int n = Math.max(forest.entryCount(), 1);
 
-            System.out.printf("  %-12s %-8d %-10.1f %-11.2f %-13.0f %.1f entries%n",
+            System.out.printf("  %-15s %-8d %-10.1f %-11.2f %-13.0f %.1f entries%n",
                     strategy.name(),
                     forest.chunkCount(),
                     forest.entryCount() / (double) Math.max(forest.chunkCount(), 1),
@@ -271,7 +277,7 @@ public final class DemoRunner {
 
         System.out.println();
         System.out.println("  Reading it: fewer, larger chunks -> shorter super-tree path but a taller");
-        System.out.println("  chunk tree and a costlier rebuild. The three strategies land at different");
+        System.out.println("  chunk tree and a costlier rebuild. The strategies land at different");
         System.out.println("  points on that trade-off, which is what the base paper's single strategy");
         System.out.println("  could not show. Base-paper reference proof size: ~1006 bytes.");
         System.out.println();
@@ -325,11 +331,11 @@ public final class DemoRunner {
         rule('=');
         System.out.println("  STATUS");
         rule('=');
-        System.out.println("  DONE      Phase 1 - core DSA: hashing, tree, proofs, verifier, forest,");
-        System.out.println("                      3 chunking strategies.  260 unit tests, all green.");
-        System.out.println("  NEXT      Phase 2 - REST API   |  Phase 3 - PostgreSQL persistence");
-        System.out.println("  PENDING   Phases 4-6 - React visualisation, tamper UI, comparison page");
-        System.out.println("            Phase 7 - benchmark dashboard  |  Phase 8 - deployment");
+        System.out.println("  DONE      Core engine: hashing, tree, proofs, verifier, forest with counted");
+        System.out.println("            localised rebuild, 5 chunking strategies incl. CAAC and the base");
+        System.out.println("            paper's method, the paper's global-tree pipeline. All tests green.");
+        System.out.println("  NEXT      Benchmarks at the paper's sizes  |  Spring API + PostgreSQL");
+        System.out.println("  PENDING   React visualiser  |  Render deployment");
         System.out.println();
         System.out.println("  This console demo stands in for the front end until Phase 4. Every figure");
         System.out.println("  above came from the real engine - no fixtures, no mocked hashes.");

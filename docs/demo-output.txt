@@ -1,6 +1,6 @@
 ==============================================================================
   MERKLE-TREE TAMPER-EVIDENT LOG INTEGRITY  -  core engine demo
-  Phase 1 (core DSA) complete - console demo pending the React front end
+  Content-Anchored Adaptive Chunking (CAAC) - console demo of the engine
 ==============================================================================
 
 ------------------------------------------------------------------------------
@@ -111,25 +111,28 @@
   When an entry changes, only its own chunk's tree is rebuilt, plus the
   small super-tree over the chunk roots. Every other chunk is untouched.
 
-    chunk rebuilt              : 2
-    entries re-hashed          : 64
-    entries in the dataset     : 512
-    saving vs one global tree  : 8.0x cheaper
+    chunk rebuilt               : 2
+    entries in that chunk       : 64
+    entries in the dataset      : 512
+    SHA-256 operations (counted): 71
+    base paper's pipeline       : 512  (one global tree, full rebuild)
 
-  This is exactly why chunking strategy matters, and what Phase 7 measures:
+  This is why chunking strategy matters, and what the benchmark measures:
   smaller chunks rebuild faster but make proofs longer, and vice versa.
 
 ------------------------------------------------------------------------------
   [7]  CHUNKING STRATEGY COMPARISON  (the contribution over the base paper)
 ------------------------------------------------------------------------------
-  strategy     chunks   avg size   avg steps   proof bytes   rebuild cost
-  --------     ------   --------   ---------   -----------   ------------
-  fixed-size   8        64.0       9.00        288           64.0 entries
-  time-window  45       11.4       10.04       321           23.2 entries
-  entropy      28       18.3       9.39        301           18.9 entries
+  strategy        chunks   avg size   avg steps   proof bytes   rebuild cost
+  --------        ------   --------   ---------   -----------   ------------
+  fixed-size      8        64.0       9.00        288           64.0 entries
+  time-window     45       11.4       10.04       321           23.2 entries
+  entropy         28       18.3       9.39        301           18.9 entries
+  resource-aware  8        64.0       9.63        308           67.9 entries
+  caac            11       46.5       9.83        315           68.6 entries
 
   Reading it: fewer, larger chunks -> shorter super-tree path but a taller
-  chunk tree and a costlier rebuild. The three strategies land at different
+  chunk tree and a costlier rebuild. The strategies land at different
   points on that trade-off, which is what the base paper's single strategy
   could not show. Base-paper reference proof size: ~1006 bytes.
 
@@ -161,11 +164,11 @@
 ==============================================================================
   STATUS
 ==============================================================================
-  DONE      Phase 1 - core DSA: hashing, tree, proofs, verifier, forest,
-                      3 chunking strategies.  260 unit tests, all green.
-  NEXT      Phase 2 - REST API   |  Phase 3 - PostgreSQL persistence
-  PENDING   Phases 4-6 - React visualisation, tamper UI, comparison page
-            Phase 7 - benchmark dashboard  |  Phase 8 - deployment
+  DONE      Core engine: hashing, tree, proofs, verifier, forest with counted
+            localised rebuild, 5 chunking strategies incl. CAAC and the base
+            paper's method, the paper's global-tree pipeline. All tests green.
+  NEXT      Benchmarks at the paper's sizes  |  Spring API + PostgreSQL
+  PENDING   React visualiser  |  Render deployment
 
   This console demo stands in for the front end until Phase 4. Every figure
   above came from the real engine - no fixtures, no mocked hashes.

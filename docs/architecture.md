@@ -3,7 +3,7 @@
 How the core works and why it is built this way. Written to be read aloud in a viva —
 every design choice below has a reason attached.
 
-Status: Phase 1 complete (core DSA logic). The project objective changed in October 2026 to
+Status: core engine complete, including CAAC and the base-paper baseline. The objective changed in October 2026 to
 **Content-Anchored Adaptive Chunking (CAAC)**; see §12 and `instructions.md`. The API,
 persistence and UI are built on top of this core without changing its guarantees.
 
@@ -37,8 +37,8 @@ ChunkingStrategy ──> Chunk ──> MerkleTree ─┴─> chunk root ──�
 
 | Package | Contains | Depends on |
 |---|---|---|
-| `core` | `Hashing`, `LogEntry`, `MerkleTree`, `MerkleNode`, `MerkleProof`, `ProofStep`, `MerkleVerifier`, `MerkleForest`, `ForestProof` | `chunking` (for `Chunk`) |
-| `chunking` | `ChunkingStrategy` + three implementations + factory | nothing |
+| `core` | `Hashing`, `LogEntry`, `MerkleTree`, `MerkleNode`, `MerkleProof`, `ProofStep`, `MerkleVerifier`, `MerkleForest`, `ForestProof`, `PaperPipeline` | `chunking` (for `Chunk`, `ChunkingStrategy`) |
+| `chunking` | `ChunkingStrategy` + five implementations (fixed-size, time-window, entropy, resource-aware, caac), `ResourceAwareSizer`, `MemoryPressureProfile`, factory | `core` (for `LogEntry`) |
 
 Neither package imports Spring. They are plain Java, unit-testable with no application
 context — which is what makes the DSA contribution legible as a standalone artifact.
@@ -249,47 +249,59 @@ changes tested behaviour.
 
 ---
 
-## 11. Test coverage (Phase 1)
+## 11. Test coverage
 
-**260 tests, all passing.** `cd backend && mvn test`
+**334 tests, all passing.** `cd backend && mvn test`
 
 | Suite | Covers |
 |---|---|
-| `HashingTest` | NIST and RFC 6962 published vectors; prefix construction recomputed independently with a raw `MessageDigest`; domain separation; hex codec |
+| `HashingTest` | NIST and RFC 6962 published vectors; prefix construction recomputed independently with a raw `MessageDigest`; domain separation; hex codec; **hash-operation counting** |
 | `LogEntryTest` | Canonical serialisation; the separator-shifting collision; time-zone independence |
 | `MerkleTreeTest` | Shape at n = 1…1000; level sizes; odd-node promotion pinned hash-for-hash; the CVE-2012-2459 forgery |
 | `MerkleProofTest` | Every leaf of trees up to 257 verifies; length bounds; the empty-proof trap; verification trace |
 | `TamperDetectionTest` | Every single-entry tamper detected; deletion and insertion; localisation; five forged-proof shapes; the second-preimage attack |
-| `Chunking*Test` | Per-strategy behaviour plus one shared invariant suite run against all three |
-| `MerkleForestTest` | Two-stage proofs under every strategy; localised rebuild; all three degenerate cases |
+| `Chunking*Test` | Per-strategy behaviour plus one shared invariant suite run against all five strategies |
+| `ResourceAwareSizerTest`, `MemoryPressureProfileTest` | The paper's Eq. 1–2 pinned to hand-computed values (incl. strict band boundaries); the simulated pressure profile |
+| `ResourceAwareChunkingTest` | The paper's batching, its response to the stress profile, and that an insertion shifts every later boundary |
+| `ContentAnchoredChunkingTest` | CAAC's size range, cuts on anchors, insertion/edit locality (1–3 chunk roots change), comparison with count-based strategies, adaptivity under stress |
+| `PaperPipelineTest` | The paper's Lemma 4 (root independent of batching), Algorithm 1 ingest cost, an edit costs a full rebuild (n hashes) |
+| `MerkleForestTest` | Two-stage proofs under every strategy; **counted** localised rebuild cost; all three degenerate cases |
 | `MerklePropertyTest` | Randomised sizes (fixed seed); **every single-bit flip** of every payload detected, 100% |
 
 ---
 
-## 12. Known issue and planned work
+## 12. Localised rebuild, CAAC and the base-paper baseline
 
-### Known issue — rebuild is not yet localised in the code
+### Localised rebuild (fixed October 2026)
 
-§7 and §9 describe the intended cost of a rebuild after tampering: **O(c + k)**, one chunk plus
-the super-tree. The current `MerkleForest.withEntryReplaced` does not achieve it yet. It passes
-the full chunk list to `fromChunks`, which re-hashes **every** chunk, so the real work is O(n).
-`RebuildResult.entriesRehashed` reports the size of the edited chunk (what *should* be
-re-hashed), and the tests only check that reported number.
+`MerkleForest.withEntryReplaced` used to pass the full chunk list to `fromChunks`, which
+re-hashed every chunk, so the real work was O(n) while `RebuildResult` reported only the size of
+the edited chunk. It now reuses every untouched chunk tree and the edited chunk's other leaf
+hashes. The cost is `1 + (c − 1) + (k − 1)` hashes: one new leaf, that chunk's internal nodes,
+and the super-tree. `Hashing` counts every leaf and node hash, and the tests assert that
+counted figure, not a reported one.
 
-The fix (first item of the roadmap): reuse the untouched chunk trees, rebuild only the edited
-chunk and the super-tree, and count hash operations in `Hashing` so tests assert the work
-actually done rather than a reported figure.
+### The base paper's method (`resource-aware` + `PaperPipeline`)
 
-### Planned — CAAC and the base-paper baseline
+Yağız et al. 2026 (arXiv:2605.00065), implemented faithfully as the baseline:
 
-Two strategies are added on top of this core (full spec in `instructions.md` §3):
+- `ResourceAwareSizer` is the paper's Eq. 1 (`C = clamp(⌊M_avail·M_target/K⌋, C_min, C_max)`)
+  and Eq. 2 (adjustment factor 0.8 / 0.9 / 1.1 / 1.0 by memory pressure).
+- `MemoryPressureProfile` replaces live memory readings with a deterministic per-window
+  signal, as the paper itself does for its stress test (§5.3).
+- `ResourceAwareChunking` cuts batches of the Eq. 1–2 size.
+- `PaperPipeline` is the paper's Algorithm 1: hash each entry once, rebuild the **one global
+  tree** after every batch. An edit costs `n` hashes (limitation L4 in the paper).
 
-- **`resource-aware`**: the base paper's method (Yağız et al. 2026, Eq. 1–2), batch size
-  from memory pressure under a simulated deterministic profile, with the paper's pipeline of
-  one global tree rebuilt after every batch. Implemented faithfully as the baseline.
-- **`caac`** (Content-Anchored Adaptive Chunking, our contribution): the same memory-aware
-  size range, but within it a chunk ends after an entry whose leaf hash matches a bit
-  pattern. Boundaries are deterministic and content-defined, so an insertion or edit only
-  moves nearby boundaries, and with one tree per chunk the rebuild stays O(c + k).
+### CAAC (`caac`, our contribution)
 
-Both must satisfy the chunking contract in `ChunkingInvariantTest`.
+`ContentAnchoredChunking` uses the same `ResourceAwareSizer` to get the paper's target size
+`T`, then allows chunks of `T/4 … 2T` entries. Within that range a chunk ends after an entry
+whose leaf hash has its low `b = round(log2(T − T/4))` bits all zero; if none appears, it is
+cut at `2T`. Whether an entry is an anchor depends only on that entry, so an insertion or edit
+moves only nearby boundaries, and with one tree per chunk the rebuild stays O(c + k).
+
+First measurements at 10,000 entries: CAAC changes 1.2 chunk roots on average per insertion
+(worst 2) and rebuilds an edit in 188 hashes; fixed-size and the paper's sizing change ~75–83
+chunk roots; the paper's pipeline rebuilds in 10,000 hashes. Time-window and entropy are also
+local, but with 3–5× more, much smaller chunks, so each edit costs more (825 and 530 hashes).
