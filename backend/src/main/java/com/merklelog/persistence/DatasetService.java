@@ -5,6 +5,8 @@ import com.merklelog.demo.SyntheticLogGenerator;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.sql.Timestamp;
 import java.util.List;
@@ -98,18 +100,58 @@ public class DatasetService {
      */
     @Transactional
     public LogEntry overwriteMessage(long id, int position, String message) {
-        List<LogEntry> stream = stream(id);
-        if (position < 0 || position >= stream.size()) {
-            throw new IndexOutOfBoundsException(
-                    "Position " + position + " out of range [0, " + stream.size() + ")");
-        }
+        requirePosition(get(id), position);
         int updated = jdbc.update("UPDATE log_entries SET message = ? WHERE dataset_id = ? AND position = ?",
                 message, id, position);
         if (updated != 1) {
             throw new IllegalStateException("Expected to update one row, updated " + updated);
         }
+        // Read the row back with SQL, not through JPA. Inside this transaction JPA would hand back
+        // any entity it had already loaded, with the old message, and that stale copy would end up
+        // in the cache. For the same reason the cached stream is dropped now and again after
+        // commit, so a read racing this transaction cannot re-cache the old rows.
+        evictAfterCommit(id);
+        return jdbc.queryForObject(
+                "SELECT entry_id, logged_at, level, source, message FROM log_entries WHERE dataset_id = ? AND position = ?",
+                (rs, row) -> new LogEntry(rs.getLong("entry_id"), rs.getTimestamp("logged_at").toInstant(),
+                        rs.getString("level"), rs.getString("source"), rs.getString("message")),
+                id, position);
+    }
+
+    /**
+     * Puts one stored entry back to its original content, regenerated from the dataset's seed.
+     *
+     * <p>This is the source of truth for "undo": not whatever was stored before the attack (which
+     * may itself have been tampered with by an earlier, unreverted demo) but the entry the
+     * generator produced. Generation is prefix-stable, so only {@code position + 1} entries are
+     * generated.
+     */
+    @Transactional
+    public LogEntry restoreEntry(long id, int position) {
+        DatasetEntity dataset = get(id);
+        requirePosition(dataset, position);
+        LogEntry original = SyntheticLogGenerator.generate(position + 1, dataset.getSeed()).get(position);
+        return overwriteMessage(id, position, original.message());
+    }
+
+    private static void requirePosition(DatasetEntity dataset, int position) {
+        if (position < 0 || position >= dataset.getSize()) {
+            throw new IndexOutOfBoundsException(
+                    "Position " + position + " out of range [0, " + dataset.getSize() + ")");
+        }
+    }
+
+    /** Drops the cached stream now and once more when the current transaction commits. */
+    private void evictAfterCommit(long id) {
         cache.remove(id);
-        return stream(id).get(position);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    cache.remove(id);
+                }
+            });
+        }
     }
 
     /** Deletes everything and recreates the demo datasets: the from-empty seed path. */

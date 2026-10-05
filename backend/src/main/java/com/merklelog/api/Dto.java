@@ -36,7 +36,7 @@ public final class Dto {
 
     // ------------------------------------------------------------------ datasets
 
-    public record DatasetInfo(long id, String name, long seed, int size, Instant createdAt) {
+    public record DatasetInfo(Long id, String name, long seed, int size, Instant createdAt) {
         static DatasetInfo of(DatasetEntity d) {
             return new DatasetInfo(d.getId(), d.getName(), d.getSeed(), d.getSize(), d.getCreatedAt());
         }

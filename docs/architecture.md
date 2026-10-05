@@ -354,3 +354,26 @@ The tree diagrams use the same index arithmetic as `MerkleTree.generateProof` (s
 parent `i >> 1`), so the drawing is the stored structure, not an illustration of it. The design
 system ("The Ledger": typography, colour, motion rules) is documented in `frontend/DESIGN.md`.
 Views are checked end to end in a real browser (Playwright driving Edge).
+
+---
+
+## 15. Deployment and the presenter key
+
+One Docker image serves both the API and the visualiser (same origin); `render.yaml` defines the
+Render web service `caac` and the private PostgreSQL 18 database `caac-db`.
+
+- **Writes are locked on the public site.** `AdminGuard` (a Spring `HandlerInterceptor`) requires
+  the header `X-Admin-Key` on every request that writes to the database. The key comparison is
+  constant-time (`MessageDigest.isEqual`), the same reasoning as `Hashing.equal`: timing must not
+  reveal how much of a guess was right. Reads, proofs and the in-memory tamper comparison need no
+  key.
+- **Undo restores from the seed.** `POST /datasets/{id}/entries/{pos}/restore` regenerates the
+  original entry with `SyntheticLogGenerator` (prefix-stable, so only `pos + 1` entries are
+  generated) instead of trusting what was stored before an attack, which may itself have been
+  tampered with by an earlier demo.
+- **A stale-read bug, fixed.** `DatasetService.overwriteMessage` used to re-read the stream through
+  JPA inside its own transaction; Hibernate returned the already-loaded entities with the old
+  message, and that stale copy was cached, so verification could report an altered log as intact.
+  It now reads the row back with SQL and evicts the cached stream again after commit.
+  `DatasetServiceDatabaseTest` (opt-in, `MERKLELOG_DB_TESTS=true`, real PostgreSQL) pins both
+  behaviours.

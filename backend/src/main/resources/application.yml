@@ -2,15 +2,20 @@
 #
 # Local development: put the database password in backend/config/application.yml (git-ignored).
 # Spring Boot loads ./config/application.yml automatically when started from backend/.
-# On Render: set DATABASE_URL, DATABASE_USERNAME and DATABASE_PASSWORD in the dashboard.
+# On Render: render.yaml supplies DB_HOST, DB_PORT, DB_NAME, DATABASE_USERNAME,
+# DATABASE_PASSWORD and ADMIN_KEY from the database and the service's environment.
 
 spring:
   application:
     name: merkle-log-integrity
   datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/merklelog}
+    # Either a full JDBC URL, or assembled from parts (what Render's Blueprint provides).
+    url: ${DATABASE_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:merklelog}}
     username: ${DATABASE_USERNAME:merklelog}
     password: ${DATABASE_PASSWORD:}
+    hikari:
+      # The free database and web instance are small; a few connections are plenty for a demo.
+      maximum-pool-size: ${DB_POOL_SIZE:5}
   jpa:
     open-in-view: false
     hibernate:
@@ -22,10 +27,17 @@ spring:
 
 server:
   port: ${PORT:8080}
+  # Compress JSON and the frontend bundle: the free tier's bandwidth is limited.
+  compression:
+    enabled: true
+    mime-types: application/json,application/problem+json,text/html,text/css,application/javascript,image/svg+xml
 
 app:
   # Seed the demo datasets when the database is empty (Render's free Postgres is wiped every 30 days).
   seed-on-startup: ${APP_SEED_ON_STARTUP:true}
+  # Presenter key for database writes (see AdminGuard). Empty = no lock, for local development.
+  admin-key: ${ADMIN_KEY:}
   cors:
-    # Comma-separated frontend origins allowed to call the API (the Render static site in production).
+    # Comma-separated origins allowed to call the API from elsewhere. In production the frontend is
+    # served by this application itself, so this only matters for local development.
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173}

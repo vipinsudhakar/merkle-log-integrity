@@ -1,5 +1,15 @@
-import { useState } from 'react'
-import { api, type AnchorCheck, type AnchorView, type DatasetInfo, type EntryView, type TamperOutcome, type TamperResult } from '../api'
+import { useEffect, useState } from 'react'
+import {
+  api,
+  KeyRequiredError,
+  presenterKey,
+  type AnchorCheck,
+  type AnchorView,
+  type DatasetInfo,
+  type EntryView,
+  type TamperOutcome,
+  type TamperResult,
+} from '../api'
 import { fmt, SUBJECT_NOTES, SUBJECTS } from '../strategies'
 import { Field } from '../ui/Field'
 import { Figure } from '../ui/Figure'
@@ -294,11 +304,26 @@ function AnchorDemo({ dataset }: { dataset: DatasetInfo }) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  // On the public deployment the database steps need the presenter key (see AdminGuard).
+  const [adminRequired, setAdminRequired] = useState(false)
+  const [hasKey, setHasKey] = useState(() => presenterKey.get() !== null)
+  useEffect(() => {
+    api.config().then((c) => setAdminRequired(c.adminRequired)).catch(() => setAdminRequired(false))
+  }, [])
+  const locked = adminRequired && !hasKey
+
   const act = (work: () => Promise<void>) => {
     setBusy(true)
     setError(null)
     work()
-      .catch((e: Error) => setError(e.message))
+      .catch((e: Error) => {
+        if (e instanceof KeyRequiredError) {
+          setHasKey(false)
+          setError('That presenter key was not accepted. Enter it again to run the database steps.')
+        } else {
+          setError(e.message)
+        }
+      })
       .finally(() => setBusy(false))
   }
 
@@ -317,7 +342,9 @@ function AnchorDemo({ dataset }: { dataset: DatasetInfo }) {
       }
       const page = await api.entries(dataset.id, position, 1)
       setOriginal(page.entries[0])
-      setAttacked(await api.overwrite(dataset.id, position, 'PAYMENT APPROVED'))
+      // A fresh message every time, so the attack always changes the entry.
+      const account = String(Math.floor(1000 + Math.random() * 9000))
+      setAttacked(await api.overwrite(dataset.id, position, `PAYMENT APPROVED to account ${account}`))
       setCheck(null)
       setStep('attacked')
     })
@@ -330,7 +357,9 @@ function AnchorDemo({ dataset }: { dataset: DatasetInfo }) {
 
   const doUndo = () =>
     act(async () => {
-      if (original) await api.overwrite(dataset.id, original.position, original.message)
+      // Restore from the dataset's seed, not from what was stored before: that may itself have
+      // been tampered with by an earlier demo that was never undone.
+      if (attacked) await api.restore(dataset.id, attacked.position)
       setAttacked(null)
       setOriginal(null)
       setCheck(await api.verifyAnchor(dataset.id, 'caac'))
@@ -349,7 +378,29 @@ function AnchorDemo({ dataset }: { dataset: DatasetInfo }) {
           {error}
         </p>
       )}
-      <ol className="grid gap-x-gutter gap-y-block lg:grid-cols-3">
+      {locked && (
+        <PresenterKeyPanel
+          onSaved={() => {
+            setHasKey(true)
+            setError(null)
+          }}
+        />
+      )}
+      {adminRequired && hasKey && (
+        <p className="mb-block flex items-center gap-3 text-small text-ink-faint">
+          <span className="kicker text-verified">Presenter key set</span>
+          <button
+            className="underline decoration-rule-strong underline-offset-4 hover:text-ink"
+            onClick={() => {
+              presenterKey.clear()
+              setHasKey(false)
+            }}
+          >
+            Forget it on this browser
+          </button>
+        </p>
+      )}
+      <ol className={`grid gap-x-gutter gap-y-block transition-opacity duration-300 lg:grid-cols-3 ${locked ? 'pointer-events-none opacity-40' : ''}`}>
         <Procedure n="1" title="Publish the root" done={step !== 'start'}>
           <p className="text-small text-ink-soft">Record the current CAAC super-root as trusted.</p>
           <button className="btn-ink mt-4" onClick={doAnchor} disabled={busy}>
@@ -423,6 +474,42 @@ function AnchorDemo({ dataset }: { dataset: DatasetInfo }) {
         </Procedure>
       </ol>
     </Section>
+  )
+}
+
+/**
+ * Shown on the public deployment until the presenter key is entered. The key is only checked by
+ * the server on the next write; a wrong one comes back as a 401 and this panel returns.
+ */
+function PresenterKeyPanel({ onSaved }: { onSaved: () => void }) {
+  const [draft, setDraft] = useState('')
+  const save = () => {
+    if (!draft.trim()) return
+    presenterKey.set(draft)
+    onSaved()
+  }
+  return (
+    <div className="arrive mb-block flex flex-wrap items-end gap-x-gutter gap-y-3 border-l-2 border-ink pl-5">
+      <div className="max-w-[46ch]">
+        <div className="kicker text-ink">Locked on the public site</div>
+        <p className="mt-1 text-small text-ink-soft">
+          These steps write to the live database, so they need the presenter key. Everything else on the page is open.
+        </p>
+      </div>
+      <Field label="Presenter key">
+        <input
+          className="field w-64"
+          type="password"
+          autoComplete="off"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && save()}
+        />
+      </Field>
+      <button className="btn-ink" onClick={save}>
+        Unlock
+      </button>
+    </div>
   )
 }
 

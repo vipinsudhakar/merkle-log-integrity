@@ -183,15 +183,55 @@ export interface BenchmarkResults {
   pressure: PressureRow[]
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(BASE + path, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-  })
+// ------------------------------------------------------------------ presenter key
+
+/**
+ * On the public deployment, database writes (anchor, the attacker's overwrite, reseed) need the
+ * presenter key. It is entered once in the page and kept in this browser only.
+ */
+const KEY_STORAGE = 'presenterKey'
+
+export const presenterKey = {
+  get(): string | null {
+    try {
+      return localStorage.getItem(KEY_STORAGE)
+    } catch {
+      return null
+    }
+  },
+  set(key: string) {
+    try {
+      localStorage.setItem(KEY_STORAGE, key.trim())
+    } catch {
+      // storage unavailable: the key lasts until the page is reloaded, via the caller's state
+    }
+  },
+  clear() {
+    try {
+      localStorage.removeItem(KEY_STORAGE)
+    } catch {
+      // nothing to clear
+    }
+  },
+}
+
+/** Thrown when the API refuses a write because the presenter key is missing or wrong. */
+export class KeyRequiredError extends Error {}
+
+async function request<T>(path: string, init?: RequestInit & { write?: boolean }): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const key = init?.write ? presenterKey.get() : null
+  if (key) headers['X-Admin-Key'] = key
+  const response = await fetch(BASE + path, { ...init, headers })
   if (!response.ok) {
     // The API answers errors with RFC 9457 problem details: { detail: "..." }.
     const problem = await response.json().catch(() => null)
-    throw new Error(problem?.detail ?? `${response.status} ${response.statusText}`)
+    const message = problem?.detail ?? `${response.status} ${response.statusText}`
+    if (response.status === 401) {
+      presenterKey.clear()
+      throw new KeyRequiredError(message)
+    }
+    throw new Error(message)
   }
   return response.json() as Promise<T>
 }
@@ -201,6 +241,7 @@ function query(strategy: string, params: Params = {}): string {
 }
 
 export const api = {
+  config: () => request<{ adminRequired: boolean }>('/config'),
   strategies: () => request<StrategyInfo[]>('/strategies'),
   datasets: () => request<DatasetInfo[]>('/datasets'),
   entries: (id: number, offset: number, limit: number) =>
@@ -215,16 +256,24 @@ export const api = {
     request<TreeView>(`/datasets/${id}/supertree${query(strategy, params)}`),
   proof: (id: number, index: number, strategy: string, params?: Params) =>
     request<ProofView>(`/datasets/${id}/proof/${index}${query(strategy, params)}`),
+  /** In-memory only: open to everyone, no key needed. */
   tamper: (id: number, operation: 'edit' | 'insert', position: number, message: string, parameters?: Params) =>
     request<TamperResult>(`/datasets/${id}/tamper`, {
       method: 'POST',
       body: JSON.stringify({ operation, position, message, parameters }),
     }),
   anchor: (id: number, strategy: string) =>
-    request<AnchorView>(`/datasets/${id}/anchors${query(strategy)}`, { method: 'POST' }),
+    request<AnchorView>(`/datasets/${id}/anchors${query(strategy)}`, { method: 'POST', write: true }),
   verifyAnchor: (id: number, strategy: string) => request<AnchorCheck>(`/datasets/${id}/anchors/verify${query(strategy)}`),
   /** Rewrites a stored entry in the database: the attacker. */
   overwrite: (id: number, position: number, message: string) =>
-    request<EntryView>(`/datasets/${id}/entries/${position}`, { method: 'PUT', body: JSON.stringify({ message }) }),
+    request<EntryView>(`/datasets/${id}/entries/${position}`, {
+      method: 'PUT',
+      body: JSON.stringify({ message }),
+      write: true,
+    }),
+  /** Puts a stored entry back to its original content, regenerated from the dataset's seed. */
+  restore: (id: number, position: number) =>
+    request<EntryView>(`/datasets/${id}/entries/${position}/restore`, { method: 'POST', write: true }),
   benchmarks: () => request<BenchmarkResults>('/benchmarks'),
 }

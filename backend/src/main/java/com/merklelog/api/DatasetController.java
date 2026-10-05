@@ -76,6 +76,15 @@ public class DatasetController {
         return Dto.EntryView.of(position, datasets.overwriteMessage(id, position, request.message()));
     }
 
+    /**
+     * Restores one stored entry to its original content, regenerated from the dataset's seed:
+     * the "undo" of {@link #overwrite}, correct even if the entry was tampered with more than once.
+     */
+    @PostMapping("/datasets/{id}/entries/{position}/restore")
+    public Dto.EntryView restore(@PathVariable long id, @PathVariable int position) {
+        return Dto.EntryView.of(position, datasets.restoreEntry(id, position));
+    }
+
     /** Deletes everything and recreates the demo datasets from their fixed seed. */
     @PostMapping("/admin/seed")
     public List<Dto.DatasetInfo> seed() {

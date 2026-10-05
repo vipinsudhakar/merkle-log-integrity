@@ -43,9 +43,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * check that the API reports exactly what the engine computes. The database path itself (Flyway,
  * entities, batched inserts) is verified by running the application against PostgreSQL.
  */
-@WebMvcTest(controllers = {StrategyController.class, DatasetController.class,
+@WebMvcTest(controllers = {StrategyController.class, DatasetController.class, SystemController.class,
         ForestController.class, AnchorController.class})
-@Import({ForestService.class, ApiExceptionHandler.class, WebConfig.class})
+@Import({ForestService.class, ApiExceptionHandler.class, WebConfig.class, AdminGuard.class})
 @DisplayName("REST API — engine results over HTTP")
 class ApiTest {
 
@@ -168,6 +168,21 @@ class ApiTest {
             mvc.perform(get("/api/datasets/1/anchors/verify").param("strategy", "caac"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.matches").value(false));
+        }
+    }
+
+    @Nested
+    @DisplayName("local development: no presenter key configured")
+    class NoKeyConfigured {
+
+        @Test
+        @DisplayName("writes are allowed without a key, and config says none is required")
+        void writesAreOpen() throws Exception {
+            when(datasets.seedDemoData()).thenReturn(List.of());
+
+            mvc.perform(post("/api/admin/seed")).andExpect(status().isOk());
+            mvc.perform(get("/api/config")).andExpect(jsonPath("$.adminRequired").value(false));
+            mvc.perform(get("/api/health")).andExpect(jsonPath("$.status").value("ok"));
         }
     }
 

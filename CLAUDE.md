@@ -114,3 +114,5 @@ Changing any of these changes tested behavior. Don't "fix" them silently.
 - `cd backend && mvn spring-boot:run`                              — API on :8080 (needs local Postgres; password in git-ignored `backend/config/application.yml`)
 - `cd frontend && npm run dev` — visualiser on :5173 (proxies /api to :8080); `npm run build` type-checks and builds; `npm run lint`
 - `POST /api/admin/seed`                                           — rebuild demo data from scratch
+- `MERKLELOG_DB_TESTS=true mvn test` — also run the database tests (needs the local PostgreSQL)
+- Deploy: push to `main`; Render rebuilds from `render.yaml` + `Dockerfile`. Writes on the public site need `X-Admin-Key` (`ADMIN_KEY` in Render)

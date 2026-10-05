@@ -36,6 +36,8 @@ pnpm-debug.log*
 !.env.example
 # Local Spring overrides (database password); loaded automatically from backend/config/.
 backend/config/
+# The built frontend, copied into the jar only inside the Docker build.
+backend/src/main/resources/static/
 
 # ---------- Logs ----------
 *.log

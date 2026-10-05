@@ -1,0 +1,11 @@
+# Keep the build context small and free of local state and secrets.
+.git
+**/node_modules
+**/target
+frontend/dist
+backend/config
+backend/src/main/resources/static
+docs/images
+*.log
+.env
+.env.*

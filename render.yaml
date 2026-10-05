@@ -1,0 +1,49 @@
+# Render Blueprint: one web service (API + visualiser) and one PostgreSQL database.
+# Dashboard → New → Blueprint → this repository → Apply.
+
+databases:
+  - name: caac-db
+    plan: free                   # 1 GB, expires 30 days after creation; the app re-seeds an empty database
+    postgresMajorVersion: "18"   # same major version as local development
+    databaseName: merklelog
+    user: merklelog
+    region: singapore
+    ipAllowList: []              # no access from the internet; only Render services can connect
+
+services:
+  - type: web
+    name: caac
+    runtime: docker
+    plan: free                   # sleeps after 15 min idle; ~1–2 min to wake
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit    # every push to the default branch redeploys
+    envVars:
+      - key: DB_HOST
+        fromDatabase:
+          name: caac-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: caac-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: caac-db
+          property: database
+      - key: DATABASE_USERNAME
+        fromDatabase:
+          name: caac-db
+          property: user
+      - key: DATABASE_PASSWORD
+        fromDatabase:
+          name: caac-db
+          property: password
+      # The presenter key for database writes (see AdminGuard). Render generates it once;
+      # copy it from the service's Environment tab.
+      - key: ADMIN_KEY
+        generateValue: true
+      - key: APP_SEED_ON_STARTUP
+        value: "true"

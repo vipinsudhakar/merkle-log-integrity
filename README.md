@@ -8,6 +8,9 @@ inclusion proof, instead of re-hashing the whole log. Our contribution is **CAAC
 strategy that extends the adaptive chunking of Yağız, Horasan and Yurttakal (2026) so that
 inserting or editing an entry only touches the chunks around it.
 
+**Live demo:** *deploying to Render; the link will appear here.* It runs on a free instance that
+sleeps when idle, so the first visit can take a minute or two to wake it.
+
 ![The visualiser: an entry's inclusion proof, verified against the super-root](docs/images/hero.png)
 
 ## The result in one table
@@ -96,7 +99,7 @@ You need Java 21 and Maven; the API and visualiser also need PostgreSQL and Node
 
 ```bash
 cd backend
-mvn test                                                         # 359 tests
+mvn test                                                         # 367 tests (2 database tests opt-in)
 mvn -q compile
 java -cp target/classes com.merklelog.demo.DemoRunner            # console walkthrough
 java -cp target/classes com.merklelog.benchmark.BenchmarkRunner  # full benchmark, ~6 min
@@ -120,10 +123,29 @@ cd backend  && mvn spring-boot:run          # API on :8080; creates the schema, 
 cd frontend && npm install && npm run dev    # visualiser on http://localhost:5173
 ```
 
+### Deploying (Render)
+
+The whole app ships as one Docker image: Spring Boot serves the API **and** the built visualiser
+from the same origin ([`Dockerfile`](Dockerfile)). [`render.yaml`](render.yaml) is a Render
+Blueprint for that service (`caac`) plus a PostgreSQL 18 database (`caac-db`, private to Render).
+
+1. Render dashboard → **New → Blueprint** → choose this repository → **Apply**.
+2. Wait for the first build (several minutes). The database is created, migrated by Flyway, and
+   seeded with the demo logs automatically.
+3. The public site is read-only for the database: anyone can browse, prove and run the in-memory
+   tamper comparison, but the steps that write to the database (anchor, rewrite, restore,
+   reseed) need the **presenter key**. Find `ADMIN_KEY` in the service's *Environment* tab and
+   enter it once in §3.1.
+
+Free-tier notes: the service sleeps after 15 minutes idle (open it a few minutes before
+presenting); the free database expires after 30 days, and the app re-seeds an empty one on
+startup.
+
 <details>
 <summary>API endpoints</summary>
 
-All under `/api`; strategies are chosen with `?strategy=` plus optional parameters, e.g.
+All under `/api`. Endpoints that write to the database need the header `X-Admin-Key` when a
+key is configured (the public deployment). Strategies are chosen with `?strategy=` plus optional parameters, e.g.
 `?strategy=fixed-size&chunkSize=32` or `?strategy=caac&pressureProfile=0.25,0.85`.
 
 | Method | Path | |
@@ -137,6 +159,8 @@ All under `/api`; strategies are chosen with `?strategy=` plus optional paramete
 | POST | `/datasets/{id}/tamper` | one edit or insertion compared across all strategies |
 | POST / GET | `/datasets/{id}/anchors`, `/datasets/{id}/anchors/verify` | trusted root anchor |
 | PUT | `/datasets/{id}/entries/{pos}` | rewrite a stored entry (the attacker, for the demo) |
+| POST | `/datasets/{id}/entries/{pos}/restore` | put an entry back to its original, regenerated from the seed |
+| GET | `/health`, `/config` | health check; whether writes need the presenter key |
 | GET | `/benchmarks` | the committed benchmark results |
 | POST | `/admin/seed` | rebuild the demo data from an empty database |
 
@@ -179,9 +203,9 @@ Details: [`docs/architecture.md`](docs/architecture.md) (design and complexity),
 - ✅ Engine: hashing, trees, proofs, Merkle forest, five chunking strategies, the paper's
   pipeline, counted localised rebuilds
 - ✅ Benchmark at the paper's sizes, 5 runs each ([results](docs/benchmarks/))
-- ✅ REST API, PostgreSQL persistence, trusted root anchors (359 tests, all passing)
+- ✅ REST API, PostgreSQL persistence, trusted root anchors (367 tests, all passing)
 - ✅ Visualiser: chunking, tree & proof, tamper & insert, results
-- ⏳ Deployment on Render
+- ⏳ Deployment on Render: Docker image + Blueprint ready, presenter key locks database writes
 
 ## Team
 

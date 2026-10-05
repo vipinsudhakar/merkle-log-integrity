@@ -242,12 +242,23 @@ database is empty (`app.seed-on-startup`), and `POST /api/admin/seed` rebuilds i
 Design system: `frontend/DESIGN.md` ("The Ledger"). New views must use `src/ui/` primitives and
 the tokens in `src/index.css`.
 
-### 5.4 Deployment (Render) — day 5
+### 5.4 Deployment (Render) — as built
 
-Backend as a Docker web service, frontend as a static site (`VITE_API_BASE`), Render Postgres.
-Environment: `DATABASE_URL` (JDBC form), `DATABASE_USERNAME`, `DATABASE_PASSWORD`,
-`APP_CORS_ALLOWED_ORIGINS`, `PORT`. Benchmarks are always served from the committed results —
-free-tier timings would be misleading. Live benchmark runs are local only.
+- **One web service `caac`** (`runtime: docker`, free, Singapore) built from the root
+  `Dockerfile`: Node builds the frontend → Maven packages the jar with the frontend inside as
+  `static/` → JRE 21 runtime, non-root, `JAVA_OPTS` sized for 512 MB. Same origin, so no CORS.
+- **Database `caac-db`**: Render Postgres 18, free (1 GB, expires after 30 days), `ipAllowList: []`
+  (only Render services can connect). `render.yaml` passes `DB_HOST`, `DB_PORT`, `DB_NAME`,
+  `DATABASE_USERNAME`, `DATABASE_PASSWORD` via `fromDatabase`; `application.yml` assembles the JDBC URL.
+- **Presenter key**: `ADMIN_KEY` (`generateValue: true`). `AdminGuard` requires `X-Admin-Key` on
+  every database write: `POST /datasets`, `POST /admin/**`, `PUT /datasets/*/entries/*`,
+  `POST /datasets/*/entries/*/restore`, `POST /datasets/*/anchors`. Reads, proofs and the in-memory
+  `/tamper` stay public. No key configured (local) = no lock. The UI asks for the key in §3.1.
+- **Health check** `GET /api/health` (no database work); `GET /api/config` tells the UI whether a
+  key is required.
+- Demo data is seeded on startup when the database is empty. Benchmarks are served from the
+  committed results; live benchmark runs are local only.
+- Free tier: sleeps after 15 min idle, ~1–2 min to wake. Open it before presenting.
 
 ---
 
