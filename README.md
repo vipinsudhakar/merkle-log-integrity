@@ -8,7 +8,7 @@ inclusion proof, instead of re-hashing the whole log. Our contribution is **CAAC
 strategy that extends the adaptive chunking of Yağız, Horasan and Yurttakal (2026) so that
 inserting or editing an entry only touches the chunks around it.
 
-**Live demo:** *deploying to Render; the link will appear here.* It runs on a free instance that
+**Live demo: [caac-cicn.onrender.com](https://caac-cicn.onrender.com/)**. It runs on a free instance that
 sleeps when idle, so the first visit can take a minute or two to wake it.
 
 ![The visualiser: an entry's inclusion proof, verified against the super-root](docs/images/hero.png)
@@ -127,7 +127,8 @@ cd frontend && npm install && npm run dev    # visualiser on http://localhost:51
 
 The whole app ships as one Docker image: Spring Boot serves the API **and** the built visualiser
 from the same origin ([`Dockerfile`](Dockerfile)). [`render.yaml`](render.yaml) is a Render
-Blueprint for that service (`caac`) plus a PostgreSQL 18 database (`caac-db`, private to Render).
+Blueprint for that service (`caac`, live at https://caac-cicn.onrender.com/) plus a PostgreSQL 18
+database (`caac-db`, private to Render).
 
 1. Render dashboard → **New → Blueprint** → choose this repository → **Apply**.
 2. Wait for the first build (several minutes). The database is created, migrated by Flyway, and
@@ -205,7 +206,7 @@ Details: [`docs/architecture.md`](docs/architecture.md) (design and complexity),
 - ✅ Benchmark at the paper's sizes, 5 runs each ([results](docs/benchmarks/))
 - ✅ REST API, PostgreSQL persistence, trusted root anchors (367 tests, all passing)
 - ✅ Visualiser: chunking, tree & proof, tamper & insert, results
-- ⏳ Deployment on Render: Docker image + Blueprint ready, presenter key locks database writes
+- ✅ Deployed on Render: [caac-cicn.onrender.com](https://caac-cicn.onrender.com/) (one Docker service + PostgreSQL 18; database writes need the presenter key)
 
 ## Team
 

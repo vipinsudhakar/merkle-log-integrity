@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+**Live site:** https://caac-cicn.onrender.com/ (Render, free tier).
+
 **Before starting work, read `instructions.md` (full project spec, locked design decisions,
 roadmap) and `handoff.md` (current progress, known issues, next steps).**
 
@@ -96,6 +98,8 @@ Changing any of these changes tested behavior. Don't "fix" them silently.
   Commits are authored by the team member only.
 - `mvn test` must be green before any commit.
 - Update `handoff.md` at the end of every working session.
+- **Do not create the end-review PPT (or any slides) without explicit instructions** from the team on
+  how they want it.
 - Render's free Postgres expires every 30 days — the seed path must rebuild all data from an
   empty database. Never assume existing state or a manual restore.
 - **Frontend:** follow `frontend/DESIGN.md` ("The Ledger"): use the `src/ui/` primitives and the tokens in

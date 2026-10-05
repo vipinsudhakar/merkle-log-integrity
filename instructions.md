@@ -27,7 +27,9 @@ Deliverables for the end review:
    (`docs/benchmarks/`).
 4. ✅ A visualiser (React + Spring API): chunking, tree & proof, tamper & insert with the
    trusted-anchor demo, results.
-5. ⏳ Deployed on Render, plus an end-review PPT built from the real results (day 5).
+5. ✅ Deployed on Render: https://caac-cicn.onrender.com/ (2026-10-05).
+6. ⏳ End-review PPT built from the real results: waiting for the team's instructions on
+   template, length, sections and speakers (do not start it without them).
 
 ### One-line pitch (for slides and the viva)
 
@@ -242,9 +244,10 @@ database is empty (`app.seed-on-startup`), and `POST /api/admin/seed` rebuilds i
 Design system: `frontend/DESIGN.md` ("The Ledger"). New views must use `src/ui/` primitives and
 the tokens in `src/index.css`.
 
-### 5.4 Deployment (Render) — as built
+### 5.4 Deployment (Render) — as built, live at https://caac-cicn.onrender.com/
 
-- **One web service `caac`** (`runtime: docker`, free, Singapore) built from the root
+- **One web service `caac`** (public URL `caac-cicn.onrender.com`: Render added a suffix because
+  `caac` was taken; `runtime: docker`, free, Singapore) built from the root
   `Dockerfile`: Node builds the frontend → Maven packages the jar with the frontend inside as
   `static/` → JRE 21 runtime, non-root, `JAVA_OPTS` sized for 512 MB. Same origin, so no CORS.
 - **Database `caac-db`**: Render Postgres 18, free (1 GB, expires after 30 days), `ipAllowList: []`
@@ -283,7 +286,7 @@ the tokens in `src/index.css`.
 | 2 — benchmarks + backend ✅ (2026-10-05) | `BenchmarkRunner` → `docs/benchmarks/*.json`; Spring Boot upgrade; web/JPA/Flyway/Postgres deps; Flyway V1; local DB + user `merklelog` |
 | 3 — API + frontend ✅ (2026-10-05) | REST endpoints (§5.1); scaffold `frontend/`; chunking strip + tree/proof views |
 | 4 — frontend ✅ (2026-10-05) | Tamper/insert view, results dashboard, anchor history |
-| 5 — ship | Render deployment; final README/architecture; end-review PPT from the real graphs; demo rehearsal |
+| 5 — ship | ✅ Render deployment (live 2026-10-05); ✅ README/architecture; ⏳ end-review PPT (on instructions); ⏳ demo rehearsal |
 
 Git rules for this push: at most **6 commits per day**, each a **large bundled commit** of
 working, tested changes; **ask before every push**.
