@@ -1,6 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { api, type DatasetInfo, type Params, type ProofView, type StageView, type TreeView } from '../api'
-import { fmt, short, STRATEGY_ORDER, SUBJECTS } from '../strategies'
+import { fmt, STRATEGY_ORDER, SUBJECTS } from '../strategies'
+import { Field, Stat } from '../ui/Field'
+import { Figure } from '../ui/Figure'
+import { Hash } from '../ui/Hash'
+import { Seal } from '../ui/Seal'
+import { Section } from '../ui/Section'
 
 interface Props {
   dataset: DatasetInfo
@@ -11,10 +16,14 @@ interface Props {
   onEntryChange: (index: number) => void
 }
 
+/** Milliseconds per proof rung. Matches --dur-step in index.css. */
+const STEP_MS = 140
+
 /**
- * One entry's two-stage inclusion proof, drawn on the actual trees: entry → chunk root inside its
- * chunk's tree, then chunk root → super-root inside the super-tree. Every hash shown comes from
- * the API, which takes it from MerkleVerifier.verifyWithTrace.
+ * §2. One entry's two-stage inclusion proof, drawn on the real trees. The path climbs one level
+ * per step, the trace row for that step appears with it, stage 2 starts when stage 1 reaches its
+ * root, and the verdict is stamped when the climb ends: the O(log n) cost, watched rather than
+ * stated. Every hash comes from MerkleVerifier.verifyWithTrace through the API.
  */
 export function TreeProof({ dataset, strategy, params, entryIndex, onStrategyChange, onEntryChange }: Props) {
   const [proof, setProof] = useState<ProofView | null>(null)
@@ -31,7 +40,6 @@ export function TreeProof({ dataset, strategy, params, entryIndex, onStrategyCha
 
   useEffect(() => {
     let cancelled = false
-    setError(null)
     api
       .proof(dataset.id, entryIndex, strategy, params)
       .then(async (p) => {
@@ -40,6 +48,7 @@ export function TreeProof({ dataset, strategy, params, entryIndex, onStrategyCha
           api.superTree(dataset.id, strategy, params).catch(() => null),
         ])
         if (!cancelled) {
+          setError(null)
           setProof(p)
           setChunkTree(chunk)
           setSuperTree(sup)
@@ -56,125 +65,129 @@ export function TreeProof({ dataset, strategy, params, entryIndex, onStrategyCha
     if (Number.isInteger(value) && value >= 0 && value < dataset.size) onEntryChange(value)
   }
 
+  // Timeline: stage 1 climbs its levels, then stage 2 climbs its levels, then the stamp.
+  const stage1Levels = chunkTree ? chunkTree.levels.length - 1 : 0
+  const stage2Levels = superTree ? superTree.levels.length - 1 : 0
+  const stage2Start = stage1Levels * STEP_MS + 120
+  const stampAt = stage2Start + stage2Levels * STEP_MS + 120
+  const runKey = proof ? `${strategy}:${proof.entry.position}:${JSON.stringify(params)}` : ''
+
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-line bg-panel p-4">
-        <label className="flex flex-col gap-1 text-xs text-muted">
-          Strategy
-          <select className="input" value={strategy} onChange={(e) => onStrategyChange(e.target.value)}>
+    <Section
+      number="2"
+      title="Proving one entry"
+      lede="To check one log line you need its siblings, not the whole log: about log₂ n hashes. Stage 1 climbs the entry's chunk tree; stage 2 climbs the super-tree over the chunk roots."
+    >
+      <div className="mb-block flex flex-wrap items-end gap-x-gutter gap-y-5">
+        <Field label="Strategy">
+          <select className="field" value={strategy} onChange={(e) => onStrategyChange(e.target.value)}>
             {STRATEGY_ORDER.map((s) => (
               <option key={s} value={s}>
                 {SUBJECTS[s].label}
+                {SUBJECTS[s].ours ? ' (ours)' : ''}
               </option>
             ))}
           </select>
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-muted">
-          Entry (0–{fmt(dataset.size - 1)})
+        </Field>
+        <Field label={`Entry · 0–${fmt(dataset.size - 1)}`}>
           <input
-            className="input w-32 tabular-nums"
+            className="field figures w-28"
+            inputMode="numeric"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && go()}
           />
-        </label>
-        <button className="btn" onClick={go}>
-          Prove
-        </button>
-        <button className="btn" onClick={() => onEntryChange(Math.floor(Math.random() * dataset.size))}>
-          Random entry
-        </button>
+        </Field>
+        <div className="flex gap-2">
+          <button className="btn-ink" onClick={go}>
+            Prove
+          </button>
+          <button className="btn" onClick={() => onEntryChange(Math.floor(Math.random() * dataset.size))}>
+            Random entry
+          </button>
+        </div>
       </div>
 
-      {error && <p className="rounded-lg bg-bad/10 p-3 text-sm text-bad">{error}</p>}
+      {error && (
+        <p className="mb-block rounded-[3px] border border-tampered bg-tampered-wash px-4 py-3 text-small text-tampered">
+          {error}
+        </p>
+      )}
 
       {proof && chunkTree && (
-        <>
-          <EntryCard proof={proof} />
-          <div className="grid gap-5 xl:grid-cols-2">
-            <Panel
-              title={`Stage 1 · entry → chunk ${proof.chunkIndex} root`}
-              subtitle={`Chunk ${proof.chunkIndex} holds ${chunkTree.levels[0].length} entries (${fmt(chunkTree.start)}–${fmt(
-                chunkTree.start + chunkTree.levels[0].length - 1,
-              )}); the entry is leaf ${proof.localIndex}.`}
+        <div key={runKey} className="space-y-section">
+          <LedgerLine proof={proof} stampAt={stampAt} />
+          <div className="grid gap-x-gutter gap-y-section xl:grid-cols-2">
+            <Figure
+              number="2"
+              caption={
+                <>
+                  Stage 1, inside chunk {proof.chunkIndex} ({fmt(chunkTree.levels[0].length)} entries,{' '}
+                  {fmt(chunkTree.start)}–{fmt(chunkTree.start + chunkTree.levels[0].length - 1)}). The entry is leaf{' '}
+                  {proof.localIndex}; each step hashes the running value with one sibling.
+                </>
+              }
             >
-              <TreeDiagram levels={chunkTree.levels} leaf={proof.localIndex} />
-              <Trace stage={proof.entryStage} label="chunk root" />
-            </Panel>
-            <Panel
-              title="Stage 2 · chunk root → super-root"
-              subtitle={`The super-tree's leaves are the ${fmt(proof.chunkStage.leafCount)} chunk roots; this chunk is leaf ${proof.chunkIndex}.`}
+              <TreeDiagram levels={chunkTree.levels} leaf={proof.localIndex} delayMs={0} />
+              <Trace stage={proof.entryStage} label="chunk root" delayMs={0} />
+            </Figure>
+            <Figure
+              number="3"
+              caption={
+                <>
+                  Stage 2, inside the super-tree, whose {fmt(proof.chunkStage.leafCount)} leaves are the chunk roots. It
+                  starts from the root stage 1 produced, and must end at the published super-root.
+                </>
+              }
             >
               {superTree ? (
-                <TreeDiagram levels={superTree.levels} leaf={proof.chunkIndex} />
+                <TreeDiagram levels={superTree.levels} leaf={proof.chunkIndex} delayMs={stage2Start} />
               ) : (
-                <p className="text-sm text-muted">Super-tree too large to draw.</p>
+                <p className="text-small text-ink-faint">The super-tree is too large to draw at this size.</p>
               )}
-              <Trace stage={proof.chunkStage} label="super-root" />
-            </Panel>
+              <Trace stage={proof.chunkStage} label="super-root" delayMs={stage2Start} />
+            </Figure>
           </div>
-        </>
+        </div>
       )}
-    </div>
+    </Section>
   )
 }
 
-function EntryCard({ proof }: { proof: ProofView }) {
+/** The entry being proved, set like a line in a ledger, with the verdict stamped beside it. */
+function LedgerLine({ proof, stampAt }: { proof: ProofView; stampAt: number }) {
   const e = proof.entry
   return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-line bg-panel p-4 text-sm">
-      <div className="min-w-0 flex-1">
-        <div className="text-xs text-muted">
-          Entry #{fmt(e.position)} · {e.level} · {e.source} · {new Date(e.timestamp).toISOString().replace('T', ' ').slice(0, 23)}
+    <div className="arrive grid gap-x-gutter gap-y-5 border-y border-rule py-block lg:grid-cols-[minmax(0,1fr)_auto_auto_auto] lg:items-center">
+      <div className="min-w-0">
+        <div className="kicker">
+          Entry {fmt(e.position)} · {e.level} · {e.source} · {e.timestamp.replace('T', ' ').slice(0, 23)}
         </div>
-        <div className="truncate font-medium">{e.message}</div>
-        <div className="hash mt-1 text-muted">leaf {e.leafHash}</div>
+        <div className="mt-1.5 truncate font-display text-lede">{e.message}</div>
+        <div className="mt-1 flex items-center gap-1.5 text-small text-ink-faint">
+          leaf <Hash value={e.leafHash} chars={24} />
+        </div>
       </div>
       <Stat label="Proof length" value={`${proof.totalSteps} hashes`} />
-      <Stat label="Proof size" value={`${proof.sizeInBytes} B`} />
-      <div
-        className={`rounded-lg px-3 py-2 text-sm font-semibold ${proof.valid ? 'bg-ok/10 text-ok' : 'bg-bad/10 text-bad'}`}
-      >
-        {proof.valid ? '✓ Verified against the super-root' : '✗ Verification failed'}
-      </div>
+      <Stat label="Proof size" value={`${fmt(proof.sizeInBytes)} B`} />
+      <Seal ok={proof.valid} delayMs={stampAt} okLabel="Verified" badLabel="Failed" />
     </div>
-  )
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div className="text-xs text-muted">{label}</div>
-      <div className="font-semibold tabular-nums">{value}</div>
-    </div>
-  )
-}
-
-function Panel({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
-  return (
-    <section className="min-w-0 rounded-xl border border-line bg-panel p-4">
-      <h3 className="font-semibold">{title}</h3>
-      <p className="mb-3 text-sm text-muted">{subtitle}</p>
-      {children}
-    </section>
   )
 }
 
 /**
  * Draws a tree stored as levels (leaves first). Leaf i sits at x = i; a parent sits between its
- * children, or directly above a promoted odd node, so the drawing is exactly the level-array
- * structure: sibling of i is i ^ 1, parent is i >> 1. The proof path is orange, the siblings the
- * proof supplies are green.
+ * children, or directly above a promoted odd node, so the drawing is the level-array structure
+ * itself: sibling of i is i ^ 1, parent is i >> 1. The path is drawn in ink, one level per step.
  */
-function TreeDiagram({ levels, leaf }: { levels: string[][]; leaf: number }) {
+function TreeDiagram({ levels, leaf, delayMs }: { levels: string[][]; leaf: number; delayMs: number }) {
   const leafCount = levels[0].length
-  const gap = leafCount > 128 ? 7 : leafCount > 32 ? 14 : 28
-  const rowHeight = 44
-  const pad = 14
+  const gap = leafCount > 128 ? 6 : leafCount > 48 ? 11 : leafCount > 16 ? 18 : 30
+  const rowHeight = 40
+  const pad = 12
   const width = Math.max(1, leafCount - 1) * gap + pad * 2
   const height = (levels.length - 1) * rowHeight + pad * 2
 
-  // x positions, level by level.
   const xs: number[][] = [levels[0].map((_, i) => pad + i * gap)]
   for (let l = 1; l < levels.length; l++) {
     xs.push(
@@ -187,92 +200,139 @@ function TreeDiagram({ levels, leaf }: { levels: string[][]; leaf: number }) {
   }
   const y = (l: number) => height - pad - l * rowHeight
 
-  // Path and siblings: walk up with index arithmetic, as the proof generator does.
-  const path = new Set<string>()
+  // Walk up with index arithmetic, exactly as MerkleTree.generateProof does.
+  const pathNodes: [number, number][] = []
   const siblings = new Set<string>()
   let index = leaf
   for (let l = 0; l < levels.length; l++) {
-    path.add(`${l}:${index}`)
+    pathNodes.push([l, index])
     if (l < levels.length - 1 && (index ^ 1) < levels[l].length) siblings.add(`${l}:${index ^ 1}`)
     index >>= 1
   }
+  const onPath = new Set(pathNodes.map(([l, i]) => `${l}:${i}`))
+  const pathD = pathNodes.map(([l, i], k) => `${k === 0 ? 'M' : 'L'}${xs[l][i]},${y(l)}`).join(' ')
+  const r = leafCount > 128 ? 2 : leafCount > 48 ? 2.8 : 4
 
-  const radius = leafCount > 128 ? 2.5 : leafCount > 32 ? 3.5 : 5
   return (
-    <div className="mb-4 overflow-x-auto rounded-lg border border-line bg-bg/50">
-      <svg width={width} height={height} className="block min-w-full">
-        {levels.slice(1).map((level, li) =>
-          level.map((_, j) => {
-            const l = li + 1
-            const children = [2 * j, 2 * j + 1].filter((c) => c < levels[l - 1].length)
-            return children.map((c) => {
-              const onPath = path.has(`${l}:${j}`) && path.has(`${l - 1}:${c}`)
+    <div className="mb-block">
+      <div>
+        {/* Natural size when it fits; otherwise scaled down to the figure, never clipped. */}
+        <svg viewBox={`0 0 ${width} ${height}`} className="mx-auto block h-auto w-full" style={{ maxWidth: width }}>
+          {levels.slice(1).map((level, li) =>
+            level.map((_, j) => {
+              const l = li + 1
+              return [2 * j, 2 * j + 1]
+                .filter((c) => c < levels[l - 1].length)
+                .map((c) => (
+                  <line
+                    key={`${l}-${j}-${c}`}
+                    x1={xs[l][j]}
+                    y1={y(l)}
+                    x2={xs[l - 1][c]}
+                    y2={y(l - 1)}
+                    stroke="var(--rule-strong)"
+                    strokeWidth={0.75}
+                  />
+                ))
+            }),
+          )}
+          <path
+            d={pathD}
+            pathLength={1}
+            fill="none"
+            stroke="var(--path)"
+            strokeWidth={2.5}
+            strokeLinejoin="round"
+            className="draw"
+            style={
+              {
+                '--draw-duration': `${(levels.length - 1) * STEP_MS}ms`,
+                animationDelay: `${delayMs}ms`,
+              } as CSSProperties
+            }
+          />
+          {levels.map((level, l) =>
+            level.map((hash, j) => {
+              const key = `${l}:${j}`
+              const isPath = onPath.has(key)
+              const isSibling = siblings.has(key)
+              const lit = isPath || isSibling
               return (
-                <line
-                  key={`${l}-${j}-${c}`}
-                  x1={xs[l][j]}
-                  y1={y(l)}
-                  x2={xs[l - 1][c]}
-                  y2={y(l - 1)}
-                  stroke={onPath ? 'var(--color-path)' : 'var(--color-line)'}
-                  strokeWidth={onPath ? 2.5 : 1}
-                />
+                <circle
+                  key={key}
+                  cx={xs[l][j]}
+                  cy={y(l)}
+                  r={lit ? r + 1.6 : r}
+                  fill={isPath ? 'var(--path)' : isSibling ? 'var(--sibling)' : 'var(--ink-faint)'}
+                  fillOpacity={lit ? 1 : 0.35}
+                  className={lit ? 'arrive' : undefined}
+                  style={lit ? { animationDelay: `${delayMs + Math.max(0, l - (isSibling ? 0 : 1)) * STEP_MS}ms` } : undefined}
+                >
+                  <title>{`level ${l}, node ${j}${isPath ? ' · path' : isSibling ? ' · sibling in the proof' : ''}\n${hash}`}</title>
+                </circle>
               )
-            })
-          }),
-        )}
-        {levels.map((level, l) =>
-          level.map((hash, j) => {
-            const key = `${l}:${j}`
-            const fill = path.has(key) ? 'var(--color-path)' : siblings.has(key) ? 'var(--color-sibling)' : 'var(--color-muted)'
-            const big = path.has(key) || siblings.has(key)
-            return (
-              <circle key={key} cx={xs[l][j]} cy={y(l)} r={big ? radius + 1.5 : radius} fill={fill} fillOpacity={big ? 1 : 0.35}>
-                <title>{`level ${l}, node ${j}\n${hash}`}</title>
-              </circle>
-            )
-          }),
-        )}
-      </svg>
-      <div className="flex gap-4 border-t border-line px-3 py-1.5 text-xs text-muted">
+            }),
+          )}
+        </svg>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-small text-ink-faint">
         <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-path" /> path to the root
+          <span className="h-2 w-2 rounded-full bg-path" /> path to the root
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-sibling" /> siblings in the proof
+          <span className="h-2 w-2 rounded-full bg-sibling" /> siblings in the proof
         </span>
-        <span>{levels.length - 1} levels · {fmt(levels[0].length)} leaves</span>
+        <span className="figures text-micro">
+          {levels.length - 1} levels · {fmt(levels[0].length)} leaves
+        </span>
       </div>
     </div>
   )
 }
 
-/** Every rung of verification: running ‖ sibling (or sibling ‖ running) → SHA-256 → next. */
-function Trace({ stage, label }: { stage: StageView; label: string }) {
+/** Each rung of verification: running ‖ sibling (order set by the recorded side) → SHA-256 → next. */
+function Trace({ stage, label, delayMs }: { stage: StageView; label: string; delayMs: number }) {
+  const endAt = delayMs + stage.trace.length * STEP_MS
   return (
-    <div className="space-y-1.5">
+    <ol className="figures space-y-1 text-micro">
       {stage.trace.length === 0 && (
-        <p className="text-sm text-muted">Empty proof: a single-leaf tree, so the leaf hash is the {label} itself.</p>
+        <li className="font-sans text-small text-ink-faint">
+          An empty proof: a single-leaf tree, so the leaf hash is the {label} itself.
+        </li>
       )}
       {stage.trace.map((step, i) => (
-        <div key={i} className="hash flex flex-wrap items-center gap-x-2 rounded-md bg-bg/60 px-2 py-1">
-          <span className="w-6 text-muted">{i + 1}</span>
+        <li
+          key={i}
+          className="arrive grid grid-cols-[1.5rem_auto_auto_auto_auto_auto] items-center justify-start gap-x-2.5 border-b border-rule/70 py-1"
+          style={{ animationDelay: `${delayMs + i * STEP_MS}ms` }}
+        >
+          <span className="text-ink-faint">{String(i + 1).padStart(2, '0')}</span>
           {step.side === 'left' ? (
             <>
-              <span className="text-sibling">{short(step.sibling)}</span>‖<span>{short(step.before)}</span>
+              <Hash value={step.sibling} chars={8} className="text-sibling" />
+              <span className="text-ink-faint">‖</span>
+              <Hash value={step.before} chars={8} />
             </>
           ) : (
             <>
-              <span>{short(step.before)}</span>‖<span className="text-sibling">{short(step.sibling)}</span>
+              <Hash value={step.before} chars={8} />
+              <span className="text-ink-faint">‖</span>
+              <Hash value={step.sibling} chars={8} className="text-sibling" />
             </>
           )}
-          <span className="text-muted">→</span>
-          <span className="text-path">{short(step.after)}</span>
-        </div>
+          <span className="text-ink-faint">→</span>
+          <Hash value={step.after} chars={8} className="text-path" />
+        </li>
       ))}
-      <div className={`hash rounded-md px-2 py-1.5 ${stage.valid ? 'bg-ok/10 text-ok' : 'bg-bad/10 text-bad'}`}>
-        computed {short(stage.computedRoot, 16)} {stage.valid ? '=' : '≠'} expected {label} {short(stage.expectedRoot, 16)}
-      </div>
-    </div>
+      <li
+        className={`arrive mt-2 flex flex-wrap items-center gap-x-2 rounded-[3px] px-2 py-1.5 ${
+          stage.valid ? 'bg-verified-wash text-verified' : 'bg-tampered-wash text-tampered'
+        }`}
+        style={{ animationDelay: `${endAt}ms` }}
+      >
+        computed <Hash value={stage.computedRoot} chars={12} /> {stage.valid ? '=' : '≠'} {label}{' '}
+        <Hash value={stage.expectedRoot} chars={12} />
+      </li>
+    </ol>
   )
 }

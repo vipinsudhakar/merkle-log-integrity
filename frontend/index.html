@@ -5,6 +5,17 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CAAC Visualiser</title>
+    <script>
+      // Apply the theme before first paint, so the page never flashes the wrong one.
+      // ?theme=dark|light overrides the saved choice (handy for screenshots and slides).
+      try {
+        var forced = new URLSearchParams(location.search).get('theme')
+        if (forced === 'dark' || forced === 'light') localStorage.setItem('theme', forced)
+        document.documentElement.dataset.theme = localStorage.getItem('theme') === 'dark' ? 'dark' : 'light'
+      } catch (e) {
+        document.documentElement.dataset.theme = 'light'
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

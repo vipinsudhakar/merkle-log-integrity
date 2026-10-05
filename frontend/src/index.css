@@ -1,74 +1,298 @@
+/*
+  The Ledger — design tokens. See DESIGN.md for the reasoning behind every value.
+
+  Three layers:
+    1. raw tokens on :root (light) and [data-theme="dark"]
+    2. @theme inline maps them to Tailwind utilities (bg-paper, text-ink, font-display, ...)
+    3. a few component classes and keyframes for motion that utilities cannot express
+*/
 @import "tailwindcss";
 
-/*
-  Colour tokens. One hue per strategy, used consistently in every view and chart; CAAC (ours)
-  gets the accent. Dark mode follows the OS setting.
-*/
-@theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+@import "@fontsource-variable/newsreader/opsz.css";
+@import "@fontsource-variable/newsreader/opsz-italic.css";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
 
-  --color-bg: #f7f7f9;
-  --color-panel: #ffffff;
-  --color-ink: #16151d;
-  --color-muted: #6b6878;
-  --color-line: #e4e3ea;
-  --color-accent: #4f46e5;
-  --color-accent-soft: #eef0ff;
-  --color-ok: #15803d;
-  --color-bad: #c2410c;
-  --color-path: #f59e0b;
-  --color-sibling: #10b981;
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-  --color-s-fixed: #64748b;
-  --color-s-time: #0d9488;
-  --color-s-entropy: #ca8a04;
-  --color-s-paper: #e11d48;
-  --color-s-caac: #4f46e5;
-  --color-s-pipeline: #9ca3af;
+/* ---------------------------------------------------------------- 1. raw tokens */
+
+:root {
+  /* Paper and ink. Warm, low-glare: reads well on a projector. */
+  --paper: #f5f2eb;
+  --paper-raised: #fbfaf6;
+  --paper-sunk: #ece8de;
+  --ink: #1b1a17;
+  --ink-soft: #57534a;
+  --ink-faint: #8f897c;
+  --rule: #ddd7c9;
+  --rule-strong: #c4bcaa;
+
+  /* The only saturated colour: CAAC, written in fountain-pen ink. */
+  --signal: #2b3bc9;
+  --signal-wash: #e3e5fa;
+
+  /* Semantics, never decoration. */
+  --verified: #2f7a3e;
+  --verified-wash: #e2efe1;
+  --tampered: #c8410b;
+  --tampered-wash: #f8e4d9;
+  --path: #2b3bc9;       /* the proof path is drawn in the same ink as CAAC: "this is the claim" */
+  --sibling: #b7791f;    /* siblings are the evidence handed over: ochre, like a highlighter */
+
+  /* Baselines are graphite: present, comparable, quiet. */
+  --s-fixed: #6f7279;
+  --s-time: #5f7f78;
+  --s-entropy: #9a8452;
+  --s-paper: #9b5c62;
+  --s-caac: var(--signal);
+  --s-pipeline: #a9a398;
+
+  color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-bg: #0f0f14;
-    --color-panel: #17171f;
-    --color-ink: #ececf2;
-    --color-muted: #9a97a8;
-    --color-line: #2a2935;
-    --color-accent: #818cf8;
-    --color-accent-soft: #1e1f3a;
-    --color-ok: #4ade80;
-    --color-bad: #fb923c;
-    --color-s-fixed: #94a3b8;
-    --color-s-time: #2dd4bf;
-    --color-s-entropy: #facc15;
-    --color-s-paper: #fb7185;
-    --color-s-caac: #818cf8;
-    --color-s-pipeline: #6b7280;
-  }
+[data-theme="dark"] {
+  /* Night ledger: not inverted, re-inked. Same hierarchy, lower luminance. */
+  --paper: #14130f;
+  --paper-raised: #1c1b16;
+  --paper-sunk: #0f0e0b;
+  --ink: #ece7db;
+  --ink-soft: #b3ac9c;
+  --ink-faint: #7a7466;
+  --rule: #2e2c25;
+  --rule-strong: #46423a;
+  --signal: #8f9bff;
+  --signal-wash: #20233f;
+  --verified: #7cc58a;
+  --verified-wash: #1b2b1e;
+  --tampered: #f08a5d;
+  --tampered-wash: #34211a;
+  --path: #8f9bff;
+  --sibling: #e0b25a;
+  --s-fixed: #8d9097;
+  --s-time: #7fa198;
+  --s-entropy: #bfa66e;
+  --s-paper: #c47e85;
+  --s-pipeline: #6c675d;
+  color-scheme: dark;
+}
+
+/* ---------------------------------------------------------------- 2. theme */
+
+@theme inline {
+  /* Three voices. Display = the paper's voice; sans = the instrument's; mono = the evidence. */
+  --font-display: "Newsreader Variable", "Iowan Old Style", Georgia, serif;
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+
+  /* Fluid type scale, ratio ≈ 1.25 (major third), min at 360px → max at 1440px. */
+  --text-micro: clamp(0.6875rem, 0.67rem + 0.08vw, 0.75rem);
+  --text-small: clamp(0.8125rem, 0.79rem + 0.1vw, 0.875rem);
+  --text-body: clamp(0.9375rem, 0.91rem + 0.12vw, 1rem);
+  --text-lede: clamp(1.0625rem, 1rem + 0.3vw, 1.25rem);
+  --text-title: clamp(1.5rem, 1.3rem + 0.9vw, 2.125rem);
+  --text-display: clamp(2rem, 1.55rem + 2.1vw, 3.5rem);
+
+  /* Fluid spacing. Small steps are fixed (alignment); large steps breathe with the viewport. */
+  --spacing-hair: 0.125rem;
+  --spacing-gutter: clamp(1rem, 0.6rem + 1.8vw, 2.5rem);
+  --spacing-block: clamp(1.25rem, 1rem + 1.1vw, 2rem);
+  --spacing-section: clamp(2.5rem, 1.6rem + 4vw, 5.5rem);
+
+  --color-paper: var(--paper);
+  --color-paper-raised: var(--paper-raised);
+  --color-paper-sunk: var(--paper-sunk);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+  --color-signal: var(--signal);
+  --color-signal-wash: var(--signal-wash);
+  --color-verified: var(--verified);
+  --color-verified-wash: var(--verified-wash);
+  --color-tampered: var(--tampered);
+  --color-tampered-wash: var(--tampered-wash);
+  --color-path: var(--path);
+  --color-sibling: var(--sibling);
+
+  /* Motion: one curve for arrivals, one for state changes. Durations are named by intent. */
+  --ease-arrive: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-shift: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+:root {
+  --dur-feedback: 140ms; /* hover, press: must feel instant */
+  --dur-state: 280ms;    /* a value or selection changed */
+  --dur-reveal: 560ms;   /* something new arrives */
+  --dur-step: 140ms;     /* one rung of a proof, when drawn step by step */
+}
+
+/* ---------------------------------------------------------------- 3. base */
+
+html {
+  background: var(--paper);
 }
 
 body {
-  background: var(--color-bg);
-  color: var(--color-ink);
+  background: var(--paper);
+  color: var(--ink);
   font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+  font-feature-settings: "ss02"; /* Plex: single-storey g reads calmer in UI */
+  transition: background-color var(--dur-state) var(--ease-shift), color var(--dur-state) var(--ease-shift);
 }
+
+::selection {
+  background: var(--signal-wash);
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/* ---------------------------------------------------------------- components */
 
 @layer components {
-  .input {
-    @apply rounded-md border border-line bg-panel px-2 py-1.5 text-sm text-ink;
+  /* Numbers that must line up in columns. */
+  .figures {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums slashed-zero;
+    letter-spacing: -0.01em;
   }
+
+  /* Small caps-style kicker: section numbers, labels above controls. */
+  .kicker {
+    font-family: var(--font-mono);
+    font-size: var(--text-micro);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .field {
+    @apply rounded-[3px] border border-rule-strong bg-paper-raised px-2.5 py-1.5 text-small text-ink;
+    transition: border-color var(--dur-feedback) var(--ease-shift), box-shadow var(--dur-feedback) var(--ease-shift);
+  }
+  .field:hover {
+    border-color: var(--ink-soft);
+  }
+  .field:focus {
+    outline: none;
+    border-color: var(--signal);
+    box-shadow: 0 0 0 3px var(--signal-wash);
+  }
+
+  /* Buttons press down a hair: the only "physical" metaphor, used for actions that compute. */
   .btn {
-    @apply rounded-md border border-line bg-panel px-3 py-1.5 text-sm font-medium text-ink hover:border-accent hover:text-accent disabled:opacity-50;
+    @apply inline-flex items-center gap-2 rounded-[3px] border border-rule-strong bg-paper-raised px-3.5 py-1.5 text-small font-medium text-ink;
+    transition: transform var(--dur-feedback) var(--ease-shift), border-color var(--dur-feedback) var(--ease-shift),
+      background-color var(--dur-feedback) var(--ease-shift);
   }
-  .btn-primary {
-    @apply rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50;
+  .btn:hover {
+    border-color: var(--ink);
+  }
+  .btn:active {
+    transform: translateY(1px);
+  }
+  .btn-ink {
+    @apply inline-flex items-center gap-2 rounded-[3px] border border-ink bg-ink px-3.5 py-1.5 text-small font-medium text-paper;
+    transition: transform var(--dur-feedback) var(--ease-shift), border-color var(--dur-feedback) var(--ease-shift),
+      background-color var(--dur-feedback) var(--ease-shift);
+  }
+  .btn-ink:active {
+    transform: translateY(1px);
+  }
+  .btn-ink:hover {
+    background: var(--signal);
+    border-color: var(--signal);
+  }
+
+  /* A slider that matches the ink. */
+  .range {
+    accent-color: var(--ink);
   }
 }
 
-.hash {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  letter-spacing: -0.01em;
+/* ---------------------------------------------------------------- motion */
+
+/* Something arrives: rise a few pixels and settle. Used once per region, never on loops. */
+@keyframes arrive {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.arrive {
+  animation: arrive var(--dur-reveal) var(--ease-arrive) both;
+}
+
+/* The notary stamp: a verdict is pressed onto the page, slightly rotated, then settles. */
+@keyframes stamp {
+  0% {
+    opacity: 0;
+    transform: scale(1.35) rotate(-9deg);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(0.97) rotate(-3deg);
+  }
+  100% {
+    transform: scale(1) rotate(-3deg);
+  }
+}
+.stamp {
+  animation: stamp 420ms var(--ease-arrive) both;
+  animation-delay: var(--stamp-delay, 0ms);
+}
+
+/* Drawing a line from its start, for the proof path climbing to the root. */
+@keyframes draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+}
+.draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  animation: draw var(--draw-duration, 800ms) var(--ease-shift) both;
+}
+
+/* Loading: a slow sweep across a placeholder, so space is held and nothing jumps. */
+@keyframes sweep {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+.placeholder {
+  background: linear-gradient(90deg, var(--paper-sunk) 0%, var(--rule) 50%, var(--paper-sunk) 100%);
+  background-size: 200% 100%;
+  animation: sweep 1.6s linear infinite;
+}
+
+/* Chunk geometry glides when boundaries move, so you see which ones moved and which held still. */
+.chunk-rect {
+  transition: x var(--dur-state) var(--ease-shift), width var(--dur-state) var(--ease-shift),
+    fill-opacity var(--dur-feedback) var(--ease-shift);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 1ms !important;
+  }
 }

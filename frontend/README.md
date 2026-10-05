@@ -27,5 +27,7 @@ In production, set `VITE_API_BASE` to the API's URL at build time (for example
 | Tamper & insert | Coming next. |
 | Results | Coming next: the benchmark graphs from `docs/benchmarks/results.json`. |
 
+Design system ("The Ledger": typography, colour, space, motion, primitives): [`DESIGN.md`](DESIGN.md).
+
 Code: `src/api.ts` (typed API client, mirrors `Dto.java`), `src/strategies.ts` (colours and
-labels), `src/components/`.
+labels), `src/ui/` (design-system primitives), `src/components/` (the views).

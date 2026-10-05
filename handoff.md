@@ -109,6 +109,7 @@ _Last updated: 2026-10-05 (end of day 3)_
 | 2026-10-05 | The end-review PPT is built on day 5 from the real results. |
 | 2026-10-05 | Headline metric is insertion cost (not edit cost); see the claim in `instructions.md` §3.2. |
 | 2026-10-05 | Every strategy gets leaf hashes from `MerkleForest.build` (each entry hashed once). |
+| 2026-10-05 | Frontend design system "The Ledger" (`frontend/DESIGN.md`): Newsreader / IBM Plex Sans / IBM Plex Mono, paper-and-ink, CAAC the only saturated colour, motion only where it explains (proof climb, stamp, hash avalanche, chunk glide). Light theme by default for projectors. New views must use `src/ui/` primitives and the tokens. |
 
 ## Machine setup (Windows dev machine, set up 2026-10-04/05)
 
