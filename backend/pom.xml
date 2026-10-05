@@ -82,6 +82,22 @@
     </dependencies>
 
     <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <!--
+              The committed benchmark results, served by GET /api/benchmarks. Copied rather than
+              recomputed at runtime: see docs/benchmarks/README.md.
+            -->
+            <resource>
+                <directory>../docs/benchmarks</directory>
+                <targetPath>benchmarks</targetPath>
+                <includes>
+                    <include>results.json</include>
+                </includes>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>

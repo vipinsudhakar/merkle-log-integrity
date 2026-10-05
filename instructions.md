@@ -247,7 +247,7 @@ misleading. Live benchmark runs are local-dev only.
 |---|---|
 | 1 — engine ✅ (2026-10-05) | Fix `MerkleForest.withEntryReplaced` (rebuilt every chunk) to reuse untouched trees; add hash-operation counting in `Hashing` and assert counted work in tests; implement `ResourceAwareChunking`, `PaperPipeline`, `ContentAnchoredChunking`; register in the factory; tests incl. insertion locality |
 | 2 — benchmarks + backend ✅ (2026-10-05) | `BenchmarkRunner` → `docs/benchmarks/*.json`; Spring Boot upgrade; web/JPA/Flyway/Postgres deps; Flyway V1; local DB + user `merklelog` |
-| 3 — API + frontend | REST endpoints (§5.1); scaffold `frontend/`; chunking strip + tree/proof views |
+| 3 — API + frontend ✅ (2026-10-05) | REST endpoints (§5.1); scaffold `frontend/`; chunking strip + tree/proof views |
 | 4 — frontend | Tamper/insert view, results dashboard, anchor history |
 | 5 — ship | Render deployment; final README/architecture; end-review PPT from the real graphs; demo rehearsal |
 

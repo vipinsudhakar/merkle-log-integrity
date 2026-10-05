@@ -310,3 +310,28 @@ are also local but cost 7,931 and 5,196 because their chunks are 4–6× smaller
 about the same in every forest with similar chunk sizes (~1,500) and 100,000 in the paper's
 pipeline. `MerkleForest.build` hashes each entry once and hands the leaf hashes to the strategy,
 so CAAC does not hash twice.
+
+---
+
+## 13. API and persistence
+
+Spring is used only in `api/` and `persistence/`; they call the engine as plain Java, so the
+visualiser shows exactly what the tested engine computes.
+
+- **`ForestService`** is the API's only door into the engine: it builds strategies from query
+  parameters (`?strategy=caac&pressureProfile=0.25,0.85`), builds forests, and runs the tamper
+  comparison (`MerkleForest.withEntryReplaced` for edits, `chunksChangedSince` and
+  `rebuildCostSince` for insertions). For the paper's pipeline it uses Lemma 4 (its root equals
+  one global tree's root) to compute roots in O(n) instead of replaying every batch rebuild.
+- **`DatasetService`** stores generated streams (batched JDBC inserts), caches them in memory,
+  and re-creates the demo datasets on an empty database (startup, or `POST /api/admin/seed`).
+  Entries round-trip exactly: demo-512's super-root through the database equals the console
+  demo's `a3072b86…`.
+- **Trusted anchor** (`root_anchors`): `POST /datasets/{id}/anchors` records the current
+  super-root; `PUT /datasets/{id}/entries/{pos}` overwrites a stored entry as an attacker
+  would; `GET /datasets/{id}/anchors/verify` then reports `matches: false`.
+- **Errors** are RFC 9457 problem details from `ApiExceptionHandler`: unknown dataset → 404;
+  bad strategy, parameter or index → 400.
+- **Tests**: `ApiTest` runs the controllers with the database mocked and the engine real
+  (`@WebMvcTest`), so `mvn test` needs no PostgreSQL. The database path is verified by running
+  the application against PostgreSQL 18.

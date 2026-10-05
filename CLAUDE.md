@@ -108,5 +108,5 @@ Changing any of these changes tested behavior. Don't "fix" them silently.
 - `cd backend && mvn -q compile && java -cp target/classes com.merklelog.demo.DemoRunner` — console demo
 - `cd backend && java -cp target/classes com.merklelog.benchmark.BenchmarkRunner [--quick]` — benchmark → `docs/benchmarks/results.json|csv` (full run ≈ 6 min; don't run other heavy work at the same time, it skews timings)
 - `cd backend && mvn spring-boot:run`                              — API on :8080 (needs local Postgres; password in git-ignored `backend/config/application.yml`)
-- `cd frontend && npm run dev`                                     — frontend dev server (day 3+)
+- `cd frontend && npm run dev` — visualiser on :5173 (proxies /api to :8080); `npm run build` type-checks and builds
 - `POST /api/admin/seed`                                           — rebuild demo data from scratch

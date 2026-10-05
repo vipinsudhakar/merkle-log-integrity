@@ -101,35 +101,38 @@ The paper reports proof sizes with hex-encoded hashes, so we compare hash counts
 paper's pipeline rebuilds its tree after every 70-entry batch (Algorithm 1 as published), which
 makes its ingest slow at large n; bigger batches would help its ingest, but not its edit or
 insertion cost.
-## Visualiser (coming next)
+## Visualiser
 
-A React app backed by a Spring Boot API that runs the real engine:
+A React app backed by a Spring Boot API that runs the real engine; the browser never hashes or
+chunks anything itself.
 
-- **Chunking strip**: the log stream with each strategy's cut points; adjust parameters and
-  memory pressure
-- **Tree and proof**: draw a chunk's Merkle tree and step through an entry's proof up to the
-  super-root
-- **Tamper and insert**: change or insert an entry and see, strategy by strategy, which
-  hashes and chunks change
-- **Results dashboard**: the benchmark graphs, plus the history of anchored roots
+- ✅ **Chunking**: the same log stream cut by all five strategies, to scale. Adjust the fixed
+  chunk size and the memory-pressure profile; click a chunk to open its proof.
+- ✅ **Tree and proof**: an entry's two-stage proof drawn on the real trees (its chunk's tree,
+  then the super-tree), with every hash the verifier computes.
+- ⏳ **Tamper and insert**: change or insert an entry and see, strategy by strategy, which
+  chunks change and what the rebuild costs (the API endpoint is done).
+- ⏳ **Results dashboard**: the benchmark graphs, plus the anchored-root history.
+
+The API also implements the paper's **trusted root anchor**: publish a super-root, overwrite a
+stored entry directly in the database (the attacker), and verification against the anchor fails.
 
 ## Stack
 
-- **Backend:** Java 21, Spring Boot 3, Maven, JUnit 5 + AssertJ
+- **Backend:** Java 21, Spring Boot 3.5, Maven, JUnit 5 + AssertJ
 - **Frontend:** React (Vite, TypeScript), Tailwind CSS, Recharts
 - **Database:** PostgreSQL 18 (Flyway), for datasets and the trusted root anchor history
 - **Deployment:** Render
 
 ## Running it
 
-Requires Java 21 and Maven.
+Requires Java 21 and Maven; the API and visualiser also need PostgreSQL and Node.js.
 
 ```bash
 cd backend
-mvn test                                                    # 346 unit tests
+mvn test                                                    # 359 tests (no database needed)
 mvn -q compile
 java -cp target/classes com.merklelog.demo.DemoRunner       # console demo, 512 entries
-java -cp target/classes com.merklelog.demo.DemoRunner 2048  # any size
 java -cp target/classes com.merklelog.benchmark.BenchmarkRunner   # benchmark, ~6 min
 ```
 
@@ -138,18 +141,36 @@ with its full verification trace, tamper detection and localisation, rebuild cos
 comparison of the chunking strategies. The synthetic log stream uses a fixed seed, so every
 run prints identical hashes; a captured run is in [`docs/demo-output.txt`](docs/demo-output.txt).
 
-The API (`mvn spring-boot:run`) and the frontend (`cd frontend && npm run dev`) are coming
-next.
+**API and visualiser:**
+
+```bash
+# once: a database and user for the app
+psql -U postgres -c "CREATE ROLE merklelog LOGIN PASSWORD '<password>'"
+psql -U postgres -c "CREATE DATABASE merklelog OWNER merklelog"
+# put the password in backend/config/application.yml (git-ignored):
+#   spring:
+#     datasource:
+#       password: <password>
+
+cd backend && mvn spring-boot:run      # API on :8080; creates the schema and seeds demo datasets
+cd frontend && npm install && npm run dev   # visualiser on http://localhost:5173
+```
+
+Main endpoints (all under `/api`): `GET /strategies`, `GET /datasets`,
+`GET /datasets/{id}/chunks?strategy=caac`, `GET /datasets/{id}/proof/{i}?strategy=caac`,
+`POST /datasets/{id}/tamper`, `POST|GET /datasets/{id}/anchors`,
+`GET /datasets/{id}/anchors/verify?strategy=caac`, `GET /benchmarks`, `POST /admin/seed`.
 
 ## Status
 
 - ✅ **Core engine**: RFC 6962 hashing, Merkle trees, inclusion proofs, verifier, per-chunk
   forest, console demo
 - ✅ **Strategies**: all five, including CAAC and the base paper's method, plus the paper's
-  global-tree pipeline; localised rebuild with counted hash operations. 334 tests, all passing.
+  global-tree pipeline; localised rebuild with counted hash operations
 - ✅ **Benchmarks**: five strategies + the paper's pipeline at the paper's sizes, 5 runs each
-- ⏳ **API and database**: Spring Boot 3.5 + PostgreSQL 18 schema (Flyway) in place; REST endpoints next
-- ⏳ **Visualiser**: the four views above
+- ✅ **API and database**: Spring Boot 3.5 REST API, PostgreSQL 18 (Flyway), trusted root anchors.
+  359 tests, all passing.
+- ⏳ **Visualiser**: chunking and tree/proof views done; tamper/insert and results next
 - ⏳ **Deployment** on Render
 
 Design details: [`docs/architecture.md`](docs/architecture.md). Full project spec:

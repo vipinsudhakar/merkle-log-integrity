@@ -3,13 +3,31 @@
 Update at the end of every working session. The spec is in `instructions.md`; the rules are in
 `CLAUDE.md`.
 
-_Last updated: 2026-10-05 (end of day 2)_
+_Last updated: 2026-10-05 (end of day 3)_
 
 ---
 
 ## Where we are
 
-- **Days 1 and 2 are done.** `cd backend && mvn test` → **346 tests, all passing**.
+- **Days 1–3 are done.** `cd backend && mvn test` → **359 tests, all passing** (no database needed).
+- **Day 3 (API + frontend start):**
+  - `persistence/`: JPA entities for the V1 tables; `DatasetService` (batched JDBC inserts,
+    in-memory cache, `overwriteMessage` for the attacker demo, `seedDemoData`); `DemoDataSeeder`
+    seeds demo-512, demo-2k and demo-10k on an empty database (`app.seed-on-startup`).
+  - `api/`: `ForestService` (the only door into the engine), `StrategyController`
+    (`/strategies`, `/benchmarks` from the classpath copy of `docs/benchmarks/results.json`),
+    `DatasetController`, `ForestController` (chunks, chunk tree, super-tree, proof with trace,
+    tamper), `AnchorController` (anchor, history, verify), `ApiExceptionHandler`, `WebConfig` (CORS
+    from `APP_CORS_ALLOWED_ORIGINS`). `ApiTest` (MockMvc, database mocked, engine real).
+  - Core: `MerkleForest.chunksChangedSince` and `rebuildCostSince` (shared by the API and the
+    benchmark).
+  - Verified end to end against PostgreSQL 18.6: database round trip is exact (demo-512 super-root
+    = console demo `a3072b86…`); anchor → overwrite → verify reports `matches: false`; reseed
+    restores.
+  - `frontend/`: Vite + React 19 + TypeScript + Tailwind 4 + Recharts. Views: **Chunking strip**
+    (all five strategies to scale, chunk-size and pressure controls, click → proof) and **Tree &
+    proof** (two-stage proof drawn on the chunk tree and super-tree, full verification trace). Tabs
+    follow the URL hash. Checked with headless Edge screenshots.
 - **Day 1 (engine):** counted hashing (`Hashing.operationCount()`), localised rebuild fix in
   `MerkleForest.withEntryReplaced`, the paper's method (`ResourceAwareSizer`,
   `MemoryPressureProfile`, `ResourceAwareChunking`, `PaperPipeline`), and CAAC
@@ -105,23 +123,26 @@ _Last updated: 2026-10-05 (end of day 2)_
 
 Shells opened before these installs need a VS Code restart to see `mvn`, `node`, `psql`.
 
-## Next steps (day 3 — API + frontend start)
+## Next steps (day 4 — frontend)
 
-1. `persistence/`: JPA entities + repositories for `datasets`, `log_entries`, `root_anchors`;
-   a seeding service that rebuilds the demo datasets from an empty DB
-   (`SyntheticLogGenerator.generate(n, seed)`).
-2. `api/`: REST endpoints per `instructions.md` §5.1 (strategies, datasets, chunks, tree,
-   proof + trace, tamper/insert diff, anchors, benchmarks from `docs/benchmarks/results.json`).
-   Map `EmptyForestException` → 404 and bad parameters → 400 in one `@RestControllerAdvice`.
-3. API tests with `spring-boot-starter-test` (MockMvc). Tests must not need a running Postgres
-   unless we add Testcontainers (no Docker on this machine): keep controller/service tests on
-   mocked repositories, and verify the DB path manually.
-4. Scaffold `frontend/` (Vite + React + TS + Tailwind + Recharts); chunking strip and tree +
-   proof views against the local API.
-5. `mvn test` green → bundled commit(s) → ask before pushing.
+1. **Tamper & insert view**: pick an entry, edit or insert; call `POST /api/datasets/{id}/tamper`;
+   show the six subjects side by side: chunk strips before/after with changed chunks
+   highlighted (`changedChunks`, `chunkSizesBefore/After`), rebuild hash operations as bars,
+   super-root before/after, detected ✓. Headline: insertion cost CAAC vs the rest.
+2. **Results dashboard** (Recharts) from `GET /api/benchmarks`: insertion cost vs n (log scale,
+   the headline), edit cost vs n, chunk roots changed per insertion, proof length vs n (with the
+   paper's 14 @ 10k), throughput, pressure response (paper Fig. 4), tamper P/R/F1 table. State
+   the caveats on the page (Java vs Python; hex bytes; paper pipeline batch size).
+3. **Anchor panel**: anchor → overwrite an entry → verify fails; reseed to restore.
+4. Optional: `GET /api/datasets` → create dataset form (size, seed).
+5. `mvn test` + `npm run build` green → bundled commit → ask before pushing.
+
+Running locally: `cd backend && mvn spring-boot:run` (or `java -jar target/*.jar`), then
+`npm --prefix frontend run dev`; open http://localhost:5173. Headless screenshots for checking:
+`msedge --headless=new --screenshot=out.png --window-size=1400,1200 --virtual-time-budget=10000 "http://localhost:5173/#proof"`.
 
 ## Commit tally
 
 | Date | Commits | Notes |
 |---|---|---|
-| 2026-10-05 | 3 | (1) docs overhaul — pushed; (2) day-1 engine — pushed; (3) day-2 benchmarks + Spring Boot 3.5 / Flyway / PostgreSQL skeleton |
+| 2026-10-05 | 4 | (1) docs overhaul; (2) day-1 engine; (3) day-2 benchmarks + Spring Boot / Flyway / PostgreSQL — all pushed; (4) day-3 API, persistence, anchors, frontend chunking + proof views |

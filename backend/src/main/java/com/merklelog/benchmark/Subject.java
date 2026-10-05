@@ -4,16 +4,13 @@ import com.merklelog.chunking.Chunk;
 import com.merklelog.chunking.ChunkingStrategy;
 import com.merklelog.chunking.ResourceAwareChunking;
 import com.merklelog.core.ForestProof;
-import com.merklelog.core.Hashing;
 import com.merklelog.core.LogEntry;
 import com.merklelog.core.MerkleForest;
 import com.merklelog.core.MerkleProof;
 import com.merklelog.core.MerkleVerifier;
 import com.merklelog.core.PaperPipeline;
 
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 /**
  * One thing being benchmarked: either a chunking strategy inside our per-chunk forest, or the
@@ -140,30 +137,12 @@ interface Subject {
 
         @Override
         public int chunkRootsChangedSince(Built original) {
-            Set<String> roots = chunkRoots(forest);
-            roots.removeAll(chunkRoots(((ForestBuilt) original).forest));
-            return roots.size();
+            return forest.chunksChangedSince(((ForestBuilt) original).forest).size();
         }
 
         @Override
         public long insertionCost(Built original) {
-            Set<String> existing = chunkRoots(((ForestBuilt) original).forest);
-            long cost = 0;
-            for (int c = 0; c < forest.chunkCount(); c++) {
-                if (!existing.contains(Hashing.toHex(forest.chunkRoot(c)))) {
-                    int size = forest.chunks().get(c).size();
-                    cost += size + (size - 1);
-                }
-            }
-            return cost + (forest.chunkCount() - 1);
-        }
-
-        private static Set<String> chunkRoots(MerkleForest forest) {
-            Set<String> roots = new HashSet<>();
-            for (int c = 0; c < forest.chunkCount(); c++) {
-                roots.add(Hashing.toHex(forest.chunkRoot(c)));
-            }
-            return roots;
+            return forest.rebuildCostSince(((ForestBuilt) original).forest);
         }
     }
 

@@ -22,3 +22,10 @@ spring:
 
 server:
   port: ${PORT:8080}
+
+app:
+  # Seed the demo datasets when the database is empty (Render's free Postgres is wiped every 30 days).
+  seed-on-startup: ${APP_SEED_ON_STARTUP:true}
+  cors:
+    # Comma-separated frontend origins allowed to call the API (the Render static site in production).
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173}

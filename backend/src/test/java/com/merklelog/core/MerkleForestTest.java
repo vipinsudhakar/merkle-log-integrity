@@ -234,6 +234,30 @@ class MerkleForestTest {
         }
 
         @Test
+        @DisplayName("chunksChangedSince and rebuildCostSince count only the chunks whose roots are new")
+        void changedChunksAndTheirCost() {
+            List<LogEntry> input = entries(1_000);
+            MerkleForest original = MerkleForest.build(input, new FixedSizeChunking(100));
+
+            // An edit in chunk 3: exactly that chunk is new.
+            List<LogEntry> edited = new ArrayList<>(input);
+            edited.set(350, input.get(350).withMessage("edited"));
+            MerkleForest afterEdit = MerkleForest.build(edited, new FixedSizeChunking(100));
+            assertThat(afterEdit.chunksChangedSince(original)).containsExactly(3);
+            assertThat(afterEdit.rebuildCostSince(original)).isEqualTo((100 + 99) + (10 - 1));
+
+            // An insertion at 350 under fixed-size shifts every boundary from chunk 3 onwards.
+            List<LogEntry> inserted = new ArrayList<>(input);
+            inserted.add(350, entries(1).get(0).withMessage("inserted"));
+            MerkleForest afterInsert = MerkleForest.build(inserted, new FixedSizeChunking(100));
+            assertThat(afterInsert.chunksChangedSince(original)).containsExactly(3, 4, 5, 6, 7, 8, 9, 10);
+
+            // Nothing changed, nothing to rebuild but the super-tree.
+            assertThat(original.chunksChangedSince(original)).isEmpty();
+            assertThat(original.rebuildCostSince(original)).isEqualTo(10 - 1);
+        }
+
+        @Test
         @DisplayName("a localised edit costs a small fraction of building the forest")
         void fullBuildCostsMoreThanLocalisedEdit() {
             List<LogEntry> input = entries(4_096);

@@ -6,8 +6,10 @@ import com.merklelog.chunking.ChunkingStrategy;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * A forest of per-chunk Merkle trees, sealed under a single super-root.
@@ -309,6 +311,46 @@ public final class MerkleForest {
         long hashOperations = Hashing.operationCount() - hashesBefore;
 
         return new RebuildResult(rebuilt, chunkIndex, revisedEntries.size(), entryCount, hashOperations);
+    }
+
+    /**
+     * Indices of this forest's chunks whose roots do not appear anywhere in {@code original}.
+     *
+     * <p>A chunk root that exists in both forests covers exactly the same entries in both, so that
+     * chunk needs no re-hashing. The chunks listed here are the ones a change actually touched.
+     * This is how insertion locality is measured: after inserting one entry, CAAC typically lists
+     * one chunk, while count-based chunking lists every chunk after the insertion point.
+     */
+    public List<Integer> chunksChangedSince(MerkleForest original) {
+        Objects.requireNonNull(original, "original");
+        Set<String> existing = new HashSet<>();
+        for (MerkleTree tree : original.chunkTrees) {
+            existing.add(tree.rootHex());
+        }
+        List<Integer> changed = new ArrayList<>();
+        for (int c = 0; c < chunkTrees.size(); c++) {
+            if (!existing.contains(chunkTrees.get(c).rootHex())) {
+                changed.add(c);
+            }
+        }
+        return changed;
+    }
+
+    /**
+     * SHA-256 operations needed to turn {@code original} into this forest, re-hashing only what
+     * changed: every chunk listed by {@link #chunksChangedSince} in full ({@code size} leaves plus
+     * {@code size − 1} nodes), then the super-tree ({@code chunkCount − 1} nodes).
+     *
+     * <p>Computed from the structure, so it is exact and machine-independent. Used for the cost of
+     * an insertion, where {@link #withEntryReplaced} does not apply because boundaries may move.
+     */
+    public long rebuildCostSince(MerkleForest original) {
+        long cost = 0;
+        for (int c : chunksChangedSince(original)) {
+            int size = chunks.get(c).size();
+            cost += size + (size - 1);
+        }
+        return cost + Math.max(0, chunkCount() - 1);
     }
 
     /**
